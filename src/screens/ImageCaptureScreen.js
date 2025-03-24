@@ -21,13 +21,57 @@ import * as jpeg from "jpeg-js";
 // Initialize TF.js React Native backend
 import "@tensorflow/tfjs-react-native";
 
-// Since the model is now for cat and dog, we only have two classes.
-const CLASS_NAMES = ["Cat", "Dog"];
+/**
+ * List of all 38 classes for plant disease detection.
+ * Make sure the order of these labels exactly matches
+ * the output layer of your model.
+ */
+const CLASS_NAMES = [
+  "Apple___Apple_scab",
+  "Apple___Black_rot",
+  "Apple___Cedar_apple_rust",
+  "Apple___healthy",
+  "Blueberry___healthy",
+  "Cherry_(including_sour)___Powdery_mildew",
+  "Cherry_(including_sour)___healthy",
+  "Corn_(maize)___Cercospora_leaf_spot Gray_leaf_spot",
+  "Corn_(maize)___Common_rust_",
+  "Corn_(maize)___Northern_Leaf_Blight",
+  "Corn_(maize)___healthy",
+  "Grape___Black_rot",
+  "Grape___Esca_(Black_Measles)",
+  "Grape___Leaf_blight_(Isariopsis_Leaf_Spot)",
+  "Grape___healthy",
+  "Orange___Haunglongbing_(Citrus_greening)",
+  "Peach___Bacterial_spot",
+  "Peach___healthy",
+  "Pepper,_bell___Bacterial_spot",
+  "Pepper,_bell___healthy",
+  "Potato___Early_blight",
+  "Potato___Late_blight",
+  "Potato___healthy",
+  "Raspberry___healthy",
+  "Soybean___healthy",
+  "Squash___Powdery_mildew",
+  "Strawberry___Leaf_scorch",
+  "Strawberry___healthy",
+  "Tomato___Bacterial_spot",
+  "Tomato___Early_blight",
+  "Tomato___Late_blight",
+  "Tomato___Leaf_Mold",
+  "Tomato___Septoria_leaf_spot",
+  "Tomato___Spider_mites Two-spotted_spider_mite",
+  "Tomato___Target_Spot",
+  "Tomato___Tomato_Yellow_Leaf_Curl_Virus",
+  "Tomato___Tomato_mosaic_virus",
+  "Tomato___healthy",
+];
 
 const ImageCaptureScreen = () => {
   const { theme } = useTheme();
-  const [imageSource, setImageSource] = useState(null);
   const navigation = useNavigation();
+
+  const [imageSource, setImageSource] = useState(null);
   const [isPredicting, setIsPredicting] = useState(false);
   const [prediction, setPrediction] = useState(null);
   const [model, setModel] = useState(null);
@@ -39,11 +83,15 @@ const ImageCaptureScreen = () => {
         // Ensure TensorFlow is ready
         await tf.ready();
 
-        // IMPORTANT: This requires you to have .bin in Metro's assetExts.
+        // Load the TFJS model with multiple shards
+        // Make sure .bin is in your Metro config assetExts
         const loadedModel = await tf.loadLayersModel(
           bundleResourceIO(
-            require("../../assets/model_js/model.json"),
-            [require("../../assets/model_js/weights.bin")]
+            require("../../assets/tfjs_model/model.json"),
+            [
+              require("../../assets/tfjs_model/group1-shard1of2.bin"),
+              require("../../assets/tfjs_model/group1-shard2of2.bin"),
+            ]
           )
         );
 
@@ -61,12 +109,22 @@ const ImageCaptureScreen = () => {
     loadModel();
   }, []);
 
-  // Preprocess the image for the model (assumes 224x224 input size)
+  /**
+   * Preprocess the image for the model (assumes 224x224 input size).
+   * - Reads image as base64
+   * - Decodes to raw RGB data
+   * - Removes alpha channel
+   * - Resizes & normalizes
+   * - Expands dimension for batch
+   */
   const preprocessImage = async (uri) => {
     try {
+      // Read the image as a base64 string
       const base64 = await FileSystem.readAsStringAsync(uri, {
         encoding: FileSystem.EncodingType.Base64,
       });
+
+      // Decode the base64 into raw image data
       const rawImageData = Buffer.from(base64, "base64");
       const { width, height, data } = jpeg.decode(rawImageData, {
         useTArray: true,
@@ -76,15 +134,15 @@ const ImageCaptureScreen = () => {
       const numPixels = width * height;
       const values = new Uint8Array(numPixels * 3);
       for (let i = 0; i < numPixels; i++) {
-        values[i * 3] = data[i * 4]; // Red channel
-        values[i * 3 + 1] = data[i * 4 + 1]; // Green channel
-        values[i * 3 + 2] = data[i * 4 + 2]; // Blue channel
+        values[i * 3] = data[i * 4];     // R
+        values[i * 3 + 1] = data[i * 4 + 1]; // G
+        values[i * 3 + 2] = data[i * 4 + 2]; // B
       }
 
       // Create a tensor from the RGB values
       const imgTensor = tf.tensor3d(values, [height, width, 3], "float32");
 
-      // Resize and normalize the image (assuming the model expects 224x224 input)
+      // Resize and normalize the image (model expects 224x224 input)
       const resized = tf.image.resizeBilinear(imgTensor, [224, 224]);
       const normalized = resized.div(255.0);
 
@@ -98,11 +156,11 @@ const ImageCaptureScreen = () => {
   // Perform prediction using the loaded model
   const handleRawPredict = async () => {
     if (!imageSource) {
-      Alert.alert("No Image", "Please select or capture an image first");
+      Alert.alert("No Image", "Please select or capture an image first.");
       return;
     }
     if (!model) {
-      Alert.alert("Model Error", "Model is not loaded yet");
+      Alert.alert("Model Error", "Model is not loaded yet.");
       return;
     }
 
@@ -110,25 +168,31 @@ const ImageCaptureScreen = () => {
       setIsPredicting(true);
       setPrediction(null);
 
+      // Preprocess the image
       const inputTensor = await preprocessImage(imageSource.uri);
+
+      // Make prediction
       const predictionTensor = model.predict(inputTensor);
 
-      // Apply softmax to convert logits into probabilities
+      // Convert logits to probabilities
       const softmaxOutput = predictionTensor.softmax();
       const predictionArray = await softmaxOutput.data();
-      
-      // Dispose tensors to free memory
+
+      // Dispose of intermediate tensors to free memory
       tf.dispose([inputTensor, predictionTensor, softmaxOutput]);
 
-      // Get prediction information
-      const predictions = Array.from(predictionArray);
-      const maxIndex = predictions.indexOf(Math.max(...predictions));
-      const maxConfidence = predictions[maxIndex];
+      // Convert Float32Array to a standard JS array
+      const probabilities = Array.from(predictionArray);
 
+      // Find the class with the highest probability
+      const maxIndex = probabilities.indexOf(Math.max(...probabilities));
+      const maxConfidence = probabilities[maxIndex];
+
+      // Prepare a result object for UI display
       const result = {
         class: CLASS_NAMES[maxIndex],
         confidence: maxConfidence,
-        rawSoftmax: predictions, // raw probability output
+        rawSoftmax: probabilities,
       };
 
       setPrediction(result);
@@ -149,7 +213,7 @@ const ImageCaptureScreen = () => {
     if (status !== "granted") {
       Alert.alert(
         "Permission required",
-        "Camera permission is needed to take photos"
+        "Camera permission is needed to take photos."
       );
       return false;
     }
@@ -162,7 +226,7 @@ const ImageCaptureScreen = () => {
     if (status !== "granted") {
       Alert.alert(
         "Permission required",
-        "Media library permission is needed to select photos"
+        "Media library permission is needed to select photos."
       );
       return false;
     }
@@ -182,7 +246,7 @@ const ImageCaptureScreen = () => {
         quality: 0.8,
       });
 
-      if (!result.canceled && result.assets && result.assets.length > 0) {
+      if (!result.canceled && result.assets?.length > 0) {
         const source = { uri: result.assets[0].uri };
         setImageSource(source);
         setPrediction(null);
@@ -206,7 +270,7 @@ const ImageCaptureScreen = () => {
         quality: 0.8,
       });
 
-      if (!result.canceled && result.assets && result.assets.length > 0) {
+      if (!result.canceled && result.assets?.length > 0) {
         const source = { uri: result.assets[0].uri };
         setImageSource(source);
         setPrediction(null);
@@ -329,12 +393,9 @@ const ImageCaptureScreen = () => {
       style={styles.scrollContainer}
       contentContainerStyle={styles.contentContainer}
     >
-      <Text style={styles.title}>Cat vs. Dog Detection</Text>
+      <Text style={styles.title}>Plant Disease Detection</Text>
 
-      <TouchableOpacity
-        style={styles.imagePreview}
-        onPress={handleCaptureImage}
-      >
+      <TouchableOpacity style={styles.imagePreview} onPress={handleCaptureImage}>
         {imageSource ? (
           <Image
             source={imageSource}
@@ -342,9 +403,7 @@ const ImageCaptureScreen = () => {
             resizeMode="contain"
           />
         ) : (
-          <Text style={styles.imagePlaceholderText}>
-            Tap to Select Image
-          </Text>
+          <Text style={styles.imagePlaceholderText}>Tap to Select Image</Text>
         )}
       </TouchableOpacity>
 
@@ -359,10 +418,7 @@ const ImageCaptureScreen = () => {
           <Button title="Take a Photo" onPress={handleCaptureImage} />
         </View>
         <View style={styles.captureButton}>
-          <Button
-            title="Choose from Library"
-            onPress={handleChooseFromLibrary}
-          />
+          <Button title="Choose from Library" onPress={handleChooseFromLibrary} />
         </View>
         <Button
           title={isPredicting ? "Analyzing..." : "Predict"}
@@ -381,12 +437,14 @@ const ImageCaptureScreen = () => {
       {prediction && (
         <View style={styles.predictionContainer}>
           <Text style={styles.predictionTitle}>Prediction Results</Text>
+
           <Text style={[styles.predictionText, { fontWeight: "bold" }]}>
-            Detected: {prediction.class}
+            Detected: {prediction.class.replace(/_/g, " ")}
           </Text>
           <Text style={styles.predictionText}>
             Confidence: {(prediction.confidence * 100).toFixed(2)}%
           </Text>
+
           <Text style={[styles.predictionTitle, { marginTop: 15, fontSize: 16 }]}>
             Raw Softmax Output
           </Text>
@@ -394,7 +452,7 @@ const ImageCaptureScreen = () => {
             {prediction.rawSoftmax.map((confidence, idx) => (
               <View key={idx} style={styles.predictionRow}>
                 <Text style={styles.classText}>
-                  {CLASS_NAMES[idx]}
+                  {CLASS_NAMES[idx].replace(/_/g, " ")}
                 </Text>
                 <Text style={styles.confidenceText}>
                   {(confidence * 100).toFixed(2)}%
