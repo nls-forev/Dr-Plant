@@ -155,7 +155,6 @@ const ImageCaptureScreen = () => {
       const probabilities = Array.from(predictionArray);
 
       // Find max index
-      const maxIndex = probabilities.indexOf(Math.max(...probabilities));
 
       // Create array of { label, confidence }
       const labelConfidencePairs = probabilities.map((confidence, idx) => ({
@@ -167,6 +166,7 @@ const ImageCaptureScreen = () => {
       labelConfidencePairs.sort((a, b) => b.confidence - a.confidence);
       const top5 = labelConfidencePairs.slice(0, 5);
       const bestResult = top5[0];
+      bestResult.label = bestResult.label.replace("   ", " ");
 
       // Navigate to ScanResults
       navigation.navigate("ScanResults", {
@@ -174,7 +174,6 @@ const ImageCaptureScreen = () => {
         imageUri: imageSource.uri,
         bestLabel: bestResult.label,
         bestConfidence: bestResult.confidence,
-        bestIndex: maxIndex, // pass the max index
       });
     } catch (error) {
       console.error("Prediction error:", error);

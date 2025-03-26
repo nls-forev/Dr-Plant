@@ -41,6 +41,7 @@ const AppNavigator = () => {
         {/* No headers on these if desired, or you can keep them shown */}
         <Stack.Screen name="SignUp" component={SignUpScreen} />
         <Stack.Screen name="Login" component={LoginScreen} />
+        <Stack.Screen name="ImageCaptureScreen" component={ImageCaptureScreen} />
 
         {/* Hide the header for the main tab screens */}
         <Stack.Screen
