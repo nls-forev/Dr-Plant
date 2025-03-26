@@ -12,7 +12,7 @@ import HomeScreen from "../screens/HomeScreen";
 import TimeLineScreen from "../screens/TimeLine";
 import SettingsScreen from "../screens/SettingsScreen";
 import CustomTabBar from "../components/CustomTabBar";
-import ScanResultsScreen from '../screens/ScanResultsScreen';
+import ScanResultsScreen from "../screens/ScanResultsScreen";
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -20,6 +20,7 @@ const Tab = createBottomTabNavigator();
 const MainTabNavigator = () => {
   return (
     <Tab.Navigator
+      // Hide the header for all tab screens
       screenOptions={{ headerShown: false }}
       // Use our custom tab bar here instead of the default one
       tabBar={(props) => <CustomTabBar {...props} />}
@@ -37,14 +38,23 @@ const AppNavigator = () => {
   return (
     <NavigationContainer>
       <Stack.Navigator initialRouteName="Login">
+        {/* No headers on these if desired, or you can keep them shown */}
         <Stack.Screen name="SignUp" component={SignUpScreen} />
         <Stack.Screen name="Login" component={LoginScreen} />
+
+        {/* Hide the header for the main tab screens */}
         <Stack.Screen
           name="Main"
           component={MainTabNavigator}
           options={{ headerShown: false }}
         />
-        <Stack.Screen name="ScanResults" component={ScanResultsScreen} />
+
+        {/* Hide the header for ScanResults screen specifically */}
+        <Stack.Screen
+          name="ScanResults"
+          component={ScanResultsScreen}
+          options={{ headerShown: false }}
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );

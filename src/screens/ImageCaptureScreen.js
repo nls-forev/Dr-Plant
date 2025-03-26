@@ -18,14 +18,9 @@ import * as tf from "@tensorflow/tfjs";
 import { bundleResourceIO } from "@tensorflow/tfjs-react-native";
 import * as jpeg from "jpeg-js";
 
-// Initialize TF.js React Native backend
-import "@tensorflow/tfjs-react-native";
+import "@tensorflow/tfjs-react-native"; // Initialize TF.js React Native backend
 
-/**
- * List of all 38 classes for plant disease detection.
- * Make sure the order of these labels exactly matches
- * the output layer of your model.
- */
+// Your 38-class list
 const CLASS_NAMES = [
   "Apple___Apple_scab",
   "Apple___Black_rot",
@@ -73,23 +68,22 @@ const ImageCaptureScreen = () => {
 
   const [imageSource, setImageSource] = useState(null);
   const [isPredicting, setIsPredicting] = useState(false);
-  const [prediction, setPrediction] = useState(null);
   const [model, setModel] = useState(null);
 
-  // Load the model when the component mounts
+  // Load the model once component mounts
   useEffect(() => {
     const loadModel = async () => {
       try {
-        // Ensure TensorFlow is ready
         await tf.ready();
 
-        // Load the TFJS model with multiple shards
-        // Make sure .bin is in your Metro config assetExts
+        // Load your TFJS model
         const loadedModel = await tf.loadLayersModel(
           bundleResourceIO(require("../../assets/tfjs_model/model.json"), [
-            require("../../assets/tfjs_model/group1-shard1of3.bin"),
-            require("../../assets/tfjs_model/group1-shard2of3.bin"),
-            require("../../assets/tfjs_model/group1-shard3of3.bin"),
+            require("../../assets/tfjs_model/group1-shard1of5.bin"),
+            require("../../assets/tfjs_model/group1-shard2of5.bin"),
+            require("../../assets/tfjs_model/group1-shard3of5.bin"),
+            require("../../assets/tfjs_model/group1-shard4of5.bin"),
+            require("../../assets/tfjs_model/group1-shard5of5.bin"),
           ])
         );
 
@@ -107,51 +101,37 @@ const ImageCaptureScreen = () => {
     loadModel();
   }, []);
 
-  /**
-   * Preprocess the image for the model (assumes 224x224 input size).
-   * - Reads image as base64
-   * - Decodes to raw RGB data
-   * - Removes alpha channel
-   * - Resizes & normalizes
-   * - Expands dimension for batch
-   */
+  // Preprocess image: decode, resize to 224x224, normalize [0..1]
   const preprocessImage = async (uri) => {
     try {
-      // Read the image as a base64 string
       const base64 = await FileSystem.readAsStringAsync(uri, {
         encoding: FileSystem.EncodingType.Base64,
       });
 
-      // Decode the base64 into raw image data
       const rawImageData = Buffer.from(base64, "base64");
       const { width, height, data } = jpeg.decode(rawImageData, {
         useTArray: true,
       });
 
-      // Remove alpha channel (convert RGBA to RGB)
+      // Convert RGBA -> RGB
       const numPixels = width * height;
       const values = new Uint8Array(numPixels * 3);
       for (let i = 0; i < numPixels; i++) {
-        values[i * 3] = data[i * 4]; // R
-        values[i * 3 + 1] = data[i * 4 + 1]; // G
-        values[i * 3 + 2] = data[i * 4 + 2]; // B
+        values[i * 3] = data[i * 4];
+        values[i * 3 + 1] = data[i * 4 + 1];
+        values[i * 3 + 2] = data[i * 4 + 2];
       }
 
-      // Create a tensor from the RGB values
       const imgTensor = tf.tensor3d(values, [height, width, 3], "float32");
-
-      // Resize and normalize the image (model expects 224x224 input)
       const resized = tf.image.resizeBilinear(imgTensor, [224, 224]);
       const normalized = resized.div(255.0);
-
-      // Add a batch dimension: [1, height, width, channels]
       return normalized.expandDims(0);
     } catch (error) {
       throw new Error("Image preprocessing failed: " + error.message);
     }
   };
 
-  // Perform prediction using the loaded model
+  // Perform inference with the loaded model
   const handleRawPredict = async () => {
     if (!imageSource) {
       Alert.alert("No Image", "Please select or capture an image first.");
@@ -164,32 +144,37 @@ const ImageCaptureScreen = () => {
 
     try {
       setIsPredicting(true);
-      setPrediction(null);
 
-      // Preprocess, predict, etc. (same as your code)
       const inputTensor = await preprocessImage(imageSource.uri);
       const predictionTensor = model.predict(inputTensor);
-      const softmaxOutput = predictionTensor.softmax();
-      const predictionArray = await softmaxOutput.data();
-      tf.dispose([inputTensor, predictionTensor, softmaxOutput]);
+      const predictionArray = await predictionTensor.data();
 
+      tf.dispose([inputTensor, predictionTensor]);
+
+      // Convert Float32Array -> normal JS array
       const probabilities = Array.from(predictionArray);
+
+      // Find max index
       const maxIndex = probabilities.indexOf(Math.max(...probabilities));
-      const maxConfidence = probabilities[maxIndex];
 
-      const result = {
-        class: CLASS_NAMES[maxIndex],
-        confidence: maxConfidence,
-        rawSoftmax: probabilities,
-      };
+      // Create array of { label, confidence }
+      const labelConfidencePairs = probabilities.map((confidence, idx) => ({
+        label: CLASS_NAMES[idx].replace(/_/g, " "),
+        confidence,
+      }));
 
-      // Instead of just setting state, navigate to results
-      // pass the relevant data in route params
+      // Sort descending, take top 5
+      labelConfidencePairs.sort((a, b) => b.confidence - a.confidence);
+      const top5 = labelConfidencePairs.slice(0, 5);
+      const bestResult = top5[0];
+
+      // Navigate to ScanResults
       navigation.navigate("ScanResults", {
-        diseaseName: result.class.replace(/_/g, " "),
-        confidence: result.confidence,
-        rawSoftmax: result.rawSoftmax,
-        imageUri: imageSource.uri, // if you want to display the image
+        top5,
+        imageUri: imageSource.uri,
+        bestLabel: bestResult.label,
+        bestConfidence: bestResult.confidence,
+        bestIndex: maxIndex, // pass the max index
       });
     } catch (error) {
       console.error("Prediction error:", error);
@@ -206,29 +191,13 @@ const ImageCaptureScreen = () => {
   const requestCameraPermission = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== "granted") {
-      Alert.alert(
-        "Permission required",
-        "Camera permission is needed to take photos."
-      );
+      Alert.alert("Permission required", "Camera permission is needed.");
       return false;
     }
     return true;
   };
 
-  // Request media library permission
-  const requestMediaLibraryPermission = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert(
-        "Permission required",
-        "Media library permission is needed to select photos."
-      );
-      return false;
-    }
-    return true;
-  };
-
-  // Capture image using camera
+  // Capture with camera
   const handleCaptureImage = async () => {
     const hasPermission = await requestCameraPermission();
     if (!hasPermission) return;
@@ -244,7 +213,6 @@ const ImageCaptureScreen = () => {
       if (!result.canceled && result.assets?.length > 0) {
         const source = { uri: result.assets[0].uri };
         setImageSource(source);
-        setPrediction(null);
       }
     } catch (error) {
       console.error("Error capturing image:", error);
@@ -252,7 +220,17 @@ const ImageCaptureScreen = () => {
     }
   };
 
-  // Choose image from library
+  // Request media library permission
+  const requestMediaLibraryPermission = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission required", "Library permission is needed.");
+      return false;
+    }
+    return true;
+  };
+
+  // Choose from library
   const handleChooseFromLibrary = async () => {
     const hasPermission = await requestMediaLibraryPermission();
     if (!hasPermission) return;
@@ -268,7 +246,6 @@ const ImageCaptureScreen = () => {
       if (!result.canceled && result.assets?.length > 0) {
         const source = { uri: result.assets[0].uri };
         setImageSource(source);
-        setPrediction(null);
       }
     } catch (error) {
       console.error("Error selecting image:", error);
@@ -276,14 +253,14 @@ const ImageCaptureScreen = () => {
     }
   };
 
-  // Format image path for debug info
+  // Helper for debug info
   const formatImagePath = (path) => {
     if (!path) return "";
     const parts = path.split("/");
     return parts[parts.length - 1];
   };
 
-  // Styles
+  // ---------- STYLES ----------
   const styles = StyleSheet.create({
     scrollContainer: {
       flex: 1,
@@ -390,10 +367,7 @@ const ImageCaptureScreen = () => {
     >
       <Text style={styles.title}>Plant Disease Detection</Text>
 
-      <TouchableOpacity
-        style={styles.imagePreview}
-        onPress={handleCaptureImage}
-      >
+      <TouchableOpacity style={styles.imagePreview} onPress={handleCaptureImage}>
         {imageSource ? (
           <Image
             source={imageSource}
@@ -416,10 +390,7 @@ const ImageCaptureScreen = () => {
           <Button title="Take a Photo" onPress={handleCaptureImage} />
         </View>
         <View style={styles.captureButton}>
-          <Button
-            title="Choose from Library"
-            onPress={handleChooseFromLibrary}
-          />
+          <Button title="Choose from Library" onPress={handleChooseFromLibrary} />
         </View>
         <Button
           title={isPredicting ? "Analyzing..." : "Predict"}
@@ -432,37 +403,6 @@ const ImageCaptureScreen = () => {
         <View style={styles.predictionContainer}>
           <ActivityIndicator size="large" color={theme.primary} />
           <Text style={styles.loadingText}>Analyzing image...</Text>
-        </View>
-      )}
-
-      {prediction && (
-        <View style={styles.predictionContainer}>
-          <Text style={styles.predictionTitle}>Prediction Results</Text>
-
-          <Text style={[styles.predictionText, { fontWeight: "bold" }]}>
-            Detected: {prediction.class.replace(/_/g, " ")}
-          </Text>
-          <Text style={styles.predictionText}>
-            Confidence: {(prediction.confidence * 100).toFixed(2)}%
-          </Text>
-
-          <Text
-            style={[styles.predictionTitle, { marginTop: 15, fontSize: 16 }]}
-          >
-            Raw Softmax Output
-          </Text>
-          <View style={styles.rawOutputContainer}>
-            {prediction.rawSoftmax.map((confidence, idx) => (
-              <View key={idx} style={styles.predictionRow}>
-                <Text style={styles.classText}>
-                  {CLASS_NAMES[idx].replace(/_/g, " ")}
-                </Text>
-                <Text style={styles.confidenceText}>
-                  {(confidence * 100).toFixed(2)}%
-                </Text>
-              </View>
-            ))}
-          </View>
         </View>
       )}
     </ScrollView>
