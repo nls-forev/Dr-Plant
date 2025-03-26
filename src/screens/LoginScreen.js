@@ -23,9 +23,9 @@ const LoginScreen = ({ navigation }) => {
   const handleLogin = () => {
     // Check if demo login is active
     if (isDemoLoginActive) {
-      console.log('Demo Login activated. Navigating to ImageCapture.');
-      Alert.alert('Demo Login Successful', 'Navigating to Image Capture Screen.');
-      navigation.navigate('ImageCapture'); // Navigate to ImageCaptureScreen
+      console.log('Demo Login activated. Navigating to Main Tab Navigator.');
+      Alert.alert('Demo Login Successful', 'Navigating to Home Screen.');
+      navigation.navigate('Main'); // Navigate to MainTabNavigator instead of 'ImageCapture'
     } else {
       Alert.alert('Login functionality to be implemented', 'For full login, implement backend integration.'); // Placeholder alert for now
     }

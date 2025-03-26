@@ -86,13 +86,11 @@ const ImageCaptureScreen = () => {
         // Load the TFJS model with multiple shards
         // Make sure .bin is in your Metro config assetExts
         const loadedModel = await tf.loadLayersModel(
-          bundleResourceIO(
-            require("../../assets/tfjs_model/model.json"),
-            [
-              require("../../assets/tfjs_model/group1-shard1of2.bin"),
-              require("../../assets/tfjs_model/group1-shard2of2.bin"),
-            ]
-          )
+          bundleResourceIO(require("../../assets/tfjs_model/model.json"), [
+            require("../../assets/tfjs_model/group1-shard1of3.bin"),
+            require("../../assets/tfjs_model/group1-shard2of3.bin"),
+            require("../../assets/tfjs_model/group1-shard3of3.bin"),
+          ])
         );
 
         setModel(loadedModel);
@@ -134,7 +132,7 @@ const ImageCaptureScreen = () => {
       const numPixels = width * height;
       const values = new Uint8Array(numPixels * 3);
       for (let i = 0; i < numPixels; i++) {
-        values[i * 3] = data[i * 4];     // R
+        values[i * 3] = data[i * 4]; // R
         values[i * 3 + 1] = data[i * 4 + 1]; // G
         values[i * 3 + 2] = data[i * 4 + 2]; // B
       }
@@ -168,34 +166,31 @@ const ImageCaptureScreen = () => {
       setIsPredicting(true);
       setPrediction(null);
 
-      // Preprocess the image
+      // Preprocess, predict, etc. (same as your code)
       const inputTensor = await preprocessImage(imageSource.uri);
-
-      // Make prediction
       const predictionTensor = model.predict(inputTensor);
-
-      // Convert logits to probabilities
       const softmaxOutput = predictionTensor.softmax();
       const predictionArray = await softmaxOutput.data();
-
-      // Dispose of intermediate tensors to free memory
       tf.dispose([inputTensor, predictionTensor, softmaxOutput]);
 
-      // Convert Float32Array to a standard JS array
       const probabilities = Array.from(predictionArray);
-
-      // Find the class with the highest probability
       const maxIndex = probabilities.indexOf(Math.max(...probabilities));
       const maxConfidence = probabilities[maxIndex];
 
-      // Prepare a result object for UI display
       const result = {
         class: CLASS_NAMES[maxIndex],
         confidence: maxConfidence,
         rawSoftmax: probabilities,
       };
 
-      setPrediction(result);
+      // Instead of just setting state, navigate to results
+      // pass the relevant data in route params
+      navigation.navigate("ScanResults", {
+        diseaseName: result.class.replace(/_/g, " "),
+        confidence: result.confidence,
+        rawSoftmax: result.rawSoftmax,
+        imageUri: imageSource.uri, // if you want to display the image
+      });
     } catch (error) {
       console.error("Prediction error:", error);
       Alert.alert(
@@ -395,7 +390,10 @@ const ImageCaptureScreen = () => {
     >
       <Text style={styles.title}>Plant Disease Detection</Text>
 
-      <TouchableOpacity style={styles.imagePreview} onPress={handleCaptureImage}>
+      <TouchableOpacity
+        style={styles.imagePreview}
+        onPress={handleCaptureImage}
+      >
         {imageSource ? (
           <Image
             source={imageSource}
@@ -418,7 +416,10 @@ const ImageCaptureScreen = () => {
           <Button title="Take a Photo" onPress={handleCaptureImage} />
         </View>
         <View style={styles.captureButton}>
-          <Button title="Choose from Library" onPress={handleChooseFromLibrary} />
+          <Button
+            title="Choose from Library"
+            onPress={handleChooseFromLibrary}
+          />
         </View>
         <Button
           title={isPredicting ? "Analyzing..." : "Predict"}
@@ -445,7 +446,9 @@ const ImageCaptureScreen = () => {
             Confidence: {(prediction.confidence * 100).toFixed(2)}%
           </Text>
 
-          <Text style={[styles.predictionTitle, { marginTop: 15, fontSize: 16 }]}>
+          <Text
+            style={[styles.predictionTitle, { marginTop: 15, fontSize: 16 }]}
+          >
             Raw Softmax Output
           </Text>
           <View style={styles.rawOutputContainer}>

@@ -1,14 +1,37 @@
-import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
-import { createStackNavigator } from '@react-navigation/stack';
+// AppNavigator.js
+import React from "react";
+import { NavigationContainer } from "@react-navigation/native";
+import { createStackNavigator } from "@react-navigation/stack";
+import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 
-import SignUpScreen from '../screens/SignUpScreen';
-import LoginScreen from '../screens/LoginScreen';
-import ProfileScreen from '../screens/ProfileScreen';
-import ImageCaptureScreen from '../screens/ImageCaptureScreen';
-import PredictionResultsScreen from '../screens/PredictionResultsScreen';
+import SignUpScreen from "../screens/SignUpScreen";
+import LoginScreen from "../screens/LoginScreen";
+import ProfileScreen from "../screens/ProfileScreen";
+import ImageCaptureScreen from "../screens/ImageCaptureScreen";
+import HomeScreen from "../screens/HomeScreen";
+import TimeLineScreen from "../screens/TimeLine";
+import SettingsScreen from "../screens/SettingsScreen";
+import CustomTabBar from "../components/CustomTabBar";
+import ScanResultsScreen from '../screens/ScanResultsScreen';
 
 const Stack = createStackNavigator();
+const Tab = createBottomTabNavigator();
+
+const MainTabNavigator = () => {
+  return (
+    <Tab.Navigator
+      screenOptions={{ headerShown: false }}
+      // Use our custom tab bar here instead of the default one
+      tabBar={(props) => <CustomTabBar {...props} />}
+    >
+      <Tab.Screen name="Home" component={HomeScreen} />
+      <Tab.Screen name="Timeline" component={TimeLineScreen} />
+      <Tab.Screen name="Scan" component={ImageCaptureScreen} />
+      <Tab.Screen name="Settings" component={SettingsScreen} />
+      <Tab.Screen name="Profile" component={ProfileScreen} />
+    </Tab.Navigator>
+  );
+};
 
 const AppNavigator = () => {
   return (
@@ -16,12 +39,15 @@ const AppNavigator = () => {
       <Stack.Navigator initialRouteName="Login">
         <Stack.Screen name="SignUp" component={SignUpScreen} />
         <Stack.Screen name="Login" component={LoginScreen} />
-        <Stack.Screen name="Profile" component={ProfileScreen} />
-        <Stack.Screen name="ImageCapture" component={ImageCaptureScreen} />
-        <Stack.Screen name="PredictionResults" component={PredictionResultsScreen} />
+        <Stack.Screen
+          name="Main"
+          component={MainTabNavigator}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen name="ScanResults" component={ScanResultsScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );
 };
 
-export default AppNavigator; 
+export default AppNavigator;

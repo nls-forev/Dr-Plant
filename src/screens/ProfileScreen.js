@@ -1,88 +1,103 @@
 import React from 'react';
-import { View, Text, StyleSheet, Switch } from 'react-native';
-import Button from '../components/Button';
-import { useTheme } from '../hooks/useTheme';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { User, Clock, Settings, HelpCircle } from 'lucide-react-native';
 
 const ProfileScreen = () => {
-  const { theme, themeMode, toggleTheme } = useTheme();
-
   const styles = StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: theme.background,
+      backgroundColor: '#000',
       padding: 20,
-      alignItems: 'center', // Center content horizontally
-      justifyContent: 'flex-start', // Align content from the top
     },
-    title: {
-      fontSize: 24,
-      fontWeight: 'bold',
-      color: theme.text,
-      marginTop: 20,
-      marginBottom: 20,
-    },
-    profileInfo: {
-      marginBottom: 20,
+    profileHeader: {
       alignItems: 'center',
+      marginTop: 20,
     },
-    profileImage: {
+    profileCircle: {
       width: 100,
       height: 100,
       borderRadius: 50,
-      backgroundColor: theme.secondary, // Placeholder image background
-      marginBottom: 10,
-    },
-    nameText: {
-      fontSize: 18,
-      color: theme.text,
-    },
-    settingsSection: {
-      marginTop: 30,
-      width: '100%', // Take full width to align settings to the left
-      paddingHorizontal: 20,
-    },
-    settingItem: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
+      backgroundColor: '#CBFF00',
       alignItems: 'center',
-      marginBottom: 15,
+      justifyContent: 'center',
     },
-    settingText: {
-      color: theme.text,
+    profileInitial: {
+      color: 'black',
+      fontSize: 40,
+      fontWeight: 'bold',
+    },
+    username: {
+      color: 'white',
+      marginTop: 10,
       fontSize: 16,
     },
-    logoutButton: {
+    email: {
+      color: 'gray',
+      marginTop: 5,
+      fontSize: 14,
+    },
+    menuContainer: {
       marginTop: 30,
-      width: '80%', // Keep logout button centered and not full width
+    },
+    menuItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 15,
+      borderBottomWidth: 1,
+      borderBottomColor: '#222',
+    },
+    menuText: {
+      color: 'white',
+      marginLeft: 15,
+      fontSize: 16,
+    },
+    cameraButton: {
+      position: 'absolute',
+      bottom: 20,
+      alignSelf: 'center',
+      backgroundColor: '#CBFF00',
+      width: 60,
+      height: 60,
+      borderRadius: 30,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
   });
 
+  const MenuIcon = ({ icon: Icon }) => (
+    <Icon color="white" size={24} />
+  );
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Profile</Text>
-
-      <View style={styles.profileInfo}>
-        <View style={styles.profileImage} /> {/* Placeholder Profile Image */}
-        <Text style={styles.nameText}>User Name</Text>
-      </View>
-
-      <View style={styles.settingsSection}>
-        <View style={styles.settingItem}>
-          <Text style={styles.settingText}>Dark Mode</Text>
-          <Switch
-            value={themeMode === 'dark'}
-            onValueChange={toggleTheme}
-          />
+      <View style={styles.profileHeader}>
+        <View style={styles.profileCircle}>
+          <Text style={styles.profileInitial}>D</Text>
         </View>
-        {/* Placeholder for Past Predictions or Saved Info */}
+        <Text style={styles.username}>Demo User</Text>
+        <Text style={styles.email}>demo@example.com</Text>
       </View>
 
-      <View style={styles.logoutButton}>
-        <Button title="Logout" onPress={() => alert('Logout functionality to be implemented.')} />
+      <View style={styles.menuContainer}>
+        <TouchableOpacity style={styles.menuItem}>
+          <MenuIcon icon={User} />
+          <Text style={styles.menuText}>Account Information</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.menuItem}>
+          <MenuIcon icon={Clock} />
+          <Text style={styles.menuText}>Scan History</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.menuItem}>
+          <MenuIcon icon={Settings} />
+          <Text style={styles.menuText}>Settings</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.menuItem}>
+          <MenuIcon icon={HelpCircle} />
+          <Text style={styles.menuText}>Help Center</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
 };
 
-export default ProfileScreen; 
+export default ProfileScreen;
