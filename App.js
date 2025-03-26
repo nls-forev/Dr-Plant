@@ -1,11 +1,11 @@
 // App.js
 import React, { createContext, useState, useEffect } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, ActivityIndicator } from 'react-native';
 import AppNavigator from './src/navigation/AppNavigator';
 import { ThemeProvider } from './src/theme/theme';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import firebase from 'firebase/app';
-import 'firebase/auth';
+import firebase from 'firebase/compat/app';
+import 'firebase/compat/auth';
 
 // Replace these with your Firebase project configuration
 const firebaseConfig = {
@@ -20,25 +20,45 @@ const firebaseConfig = {
 // Initialize Firebase if it hasn't been initialized yet
 if (!firebase.apps.length) {
   firebase.initializeApp(firebaseConfig);
+  console.log('Firebase initialized successfully');
+} else {
+  console.log('Firebase already initialized');
 }
 
-// Create a Context to share the user state across your app
+console.log('Firebase object:', firebase);
+console.log('Firebase.auth:', firebase.auth);
+
+// Create AuthContext with user state and updater
 export const AuthContext = createContext({
-  user: null,
+  user: undefined, // undefined means "still loading"
   setUser: () => {},
 });
 
 const App = () => {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(undefined);
 
   useEffect(() => {
-    // Listen for authentication state changes
+    console.log('Setting up Firebase auth listener...');
     const unsubscribe = firebase.auth().onAuthStateChanged((currentUser) => {
+      console.log('Auth state changed:', currentUser);
       setUser(currentUser);
     });
-    // Clean up the listener on unmount
-    return () => unsubscribe();
+    return () => {
+      console.log('Cleaning up auth listener');
+      unsubscribe();
+    };
   }, []);
+
+  // While waiting for Firebase to check auth status, show a loading indicator
+  if (user === undefined) {
+    return (
+      <SafeAreaProvider>
+        <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+          <ActivityIndicator size="large" color="#DFFF00" />
+        </View>
+      </SafeAreaProvider>
+    );
+  }
 
   return (
     <AuthContext.Provider value={{ user, setUser }}>
@@ -56,7 +76,7 @@ const App = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000000', // black background
+    backgroundColor: '#000000', // Black background
   },
 });
 

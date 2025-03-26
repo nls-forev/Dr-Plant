@@ -1,8 +1,9 @@
 // AppNavigator.js
-import React from "react";
+import React, { useContext } from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createStackNavigator } from "@react-navigation/stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import { AuthContext } from "../../App";
 
 import SignUpScreen from "../screens/SignUpScreen";
 import LoginScreen from "../screens/LoginScreen";
@@ -20,9 +21,7 @@ const Tab = createBottomTabNavigator();
 const MainTabNavigator = () => {
   return (
     <Tab.Navigator
-      // Hide the header for all tab screens
       screenOptions={{ headerShown: false }}
-      // Use our custom tab bar here instead of the default one
       tabBar={(props) => <CustomTabBar {...props} />}
     >
       <Tab.Screen name="Home" component={HomeScreen} />
@@ -35,22 +34,19 @@ const MainTabNavigator = () => {
 };
 
 const AppNavigator = () => {
+  const { user } = useContext(AuthContext);
+  
   return (
     <NavigationContainer>
-      <Stack.Navigator initialRouteName="Login">
-        {/* No headers on these if desired, or you can keep them shown */}
+      <Stack.Navigator initialRouteName={user ? "Main" : "Login"}>
         <Stack.Screen name="SignUp" component={SignUpScreen} />
         <Stack.Screen name="Login" component={LoginScreen} />
         <Stack.Screen name="ImageCaptureScreen" component={ImageCaptureScreen} />
-
-        {/* Hide the header for the main tab screens */}
         <Stack.Screen
           name="Main"
           component={MainTabNavigator}
           options={{ headerShown: false }}
         />
-
-        {/* Hide the header for ScanResults screen specifically */}
         <Stack.Screen
           name="ScanResults"
           component={ScanResultsScreen}
