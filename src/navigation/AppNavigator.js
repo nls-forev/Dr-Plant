@@ -35,13 +35,17 @@ const MainTabNavigator = () => {
 
 const AppNavigator = () => {
   const { user } = useContext(AuthContext);
-  
+  console.log("AppNavigator - User state:", user ? user.uid : "No user");
+
   return (
     <NavigationContainer>
       <Stack.Navigator initialRouteName={user ? "Main" : "Login"}>
         <Stack.Screen name="SignUp" component={SignUpScreen} />
         <Stack.Screen name="Login" component={LoginScreen} />
-        <Stack.Screen name="ImageCaptureScreen" component={ImageCaptureScreen} />
+        <Stack.Screen
+          name="ImageCaptureScreen"
+          component={ImageCaptureScreen}
+        />
         <Stack.Screen
           name="Main"
           component={MainTabNavigator}

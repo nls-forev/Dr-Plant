@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import firebase from "firebase/compat/app";
 import "firebase/compat/firestore";
-import { AuthContext } from "../../App"; 
+import { AuthContext } from "../../App";
 
 // Map predicted disease labels to detailed descriptions
 const diseaseDescriptions = {
@@ -114,6 +114,23 @@ const ScanResultsScreen = ({ route, navigation }) => {
     diseaseDescriptions[bestLabel] ||
     `No description available for ${bestLabel}.`;
 
+  // Helper function to upload the image to Firebase Storage and return the download URL
+  const uploadImageAsync = async (uri) => {
+    try {
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      // Use the last segment of the URI as the file name (you can improve this by generating a unique name)
+      const filename = uri.substring(uri.lastIndexOf("/") + 1);
+      const storageRef = firebase.storage().ref().child(`images/${filename}`);
+      const snapshot = await storageRef.put(blob);
+      const downloadURL = await snapshot.ref.getDownloadURL();
+      return downloadURL;
+    } catch (error) {
+      console.error("Error uploading image:", error);
+      throw new Error("Image upload failed. Please try again.");
+    }
+  };
+
   // Function to save scan result to Firestore
   const handleSaveResult = async () => {
     if (!user) {
@@ -123,12 +140,16 @@ const ScanResultsScreen = ({ route, navigation }) => {
 
     setSaving(true);
     try {
-      // Get Firestore reference
-      const firestore = firebase.firestore();
+      let uploadedImageUrl = "";
+      // If an image URI exists, attempt to upload the image and get its URL
+      if (imageUri) {
+        uploadedImageUrl = await uploadImageAsync(imageUri);
+      }
+
       // Prepare document structure
       const scanData = {
         userId: user.uid,
-        imageUri: imageUri || "",
+        imageUri: uploadedImageUrl, // Use the download URL from Storage
         bestLabel,
         bestConfidence,
         top5,
@@ -137,16 +158,15 @@ const ScanResultsScreen = ({ route, navigation }) => {
       };
 
       // Save to "recent_activity" collection; Firestore will auto-generate a document ID
-      await firestore.collection("recent_activity").add(scanData);
+      await firebase.firestore().collection("recent_activity").add(scanData);
 
       Alert.alert("Success", "Scan result saved successfully!");
-      // Optionally, navigate back to home or refresh recent activity list
+      // Optionally, navigate back to home or refresh the recent activity list
       navigation.goBack();
     } catch (error) {
       console.error("Error saving scan result:", error);
       let errorMessage =
         "An error occurred while saving your scan result. Please try again.";
-      // Optionally, check for specific error codes here
       Alert.alert("Save Error", errorMessage);
     } finally {
       setSaving(false);
