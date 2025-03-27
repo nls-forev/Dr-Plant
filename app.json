@@ -7,7 +7,10 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "packagerOpts": {
-      "assetExts": ["bin", "json"]
+      "assetExts": [
+        "bin",
+        "json"
+      ]
     },
     "newArchEnabled": true,
     "splash": {
@@ -22,7 +25,9 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "jsEngine": "hermes",
+      "package": "com.anonymous.PlantDiseasePredictionAppClassic"
     },
     "web": {
       "favicon": "./assets/favicon.png"

@@ -1,38 +1,40 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { User, Clock, Settings, HelpCircle } from 'lucide-react-native';
+import { React, useContext } from "react";
+import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { User, Clock, Settings, HelpCircle } from "lucide-react-native";
+import { AuthContext } from "../../App";
 
 const ProfileScreen = () => {
+  const { user } = useContext(AuthContext);
   const styles = StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: '#000',
+      backgroundColor: "#000",
       padding: 20,
     },
     profileHeader: {
-      alignItems: 'center',
+      alignItems: "center",
       marginTop: 20,
     },
     profileCircle: {
       width: 100,
       height: 100,
       borderRadius: 50,
-      backgroundColor: '#CBFF00',
-      alignItems: 'center',
-      justifyContent: 'center',
+      backgroundColor: "#CBFF00",
+      alignItems: "center",
+      justifyContent: "center",
     },
     profileInitial: {
-      color: 'black',
+      color: "black",
       fontSize: 40,
-      fontWeight: 'bold',
+      fontWeight: "bold",
     },
     username: {
-      color: 'white',
+      color: "white",
       marginTop: 10,
       fontSize: 16,
     },
     email: {
-      color: 'gray',
+      color: "gray",
       marginTop: 5,
       fontSize: 14,
     },
@@ -40,42 +42,44 @@ const ProfileScreen = () => {
       marginTop: 30,
     },
     menuItem: {
-      flexDirection: 'row',
-      alignItems: 'center',
+      flexDirection: "row",
+      alignItems: "center",
       paddingVertical: 15,
       borderBottomWidth: 1,
-      borderBottomColor: '#222',
+      borderBottomColor: "#222",
     },
     menuText: {
-      color: 'white',
+      color: "white",
       marginLeft: 15,
       fontSize: 16,
     },
     cameraButton: {
-      position: 'absolute',
+      position: "absolute",
       bottom: 20,
-      alignSelf: 'center',
-      backgroundColor: '#CBFF00',
+      alignSelf: "center",
+      backgroundColor: "#CBFF00",
       width: 60,
       height: 60,
       borderRadius: 30,
-      alignItems: 'center',
-      justifyContent: 'center',
+      alignItems: "center",
+      justifyContent: "center",
     },
   });
 
-  const MenuIcon = ({ icon: Icon }) => (
-    <Icon color="white" size={24} />
-  );
+  const MenuIcon = ({ icon: Icon }) => <Icon color="white" size={24} />;
 
   return (
     <View style={styles.container}>
       <View style={styles.profileHeader}>
         <View style={styles.profileCircle}>
-          <Text style={styles.profileInitial}>D</Text>
+          <Text style={styles.profileInitial}>
+            {user?.displayName[0] || user?.email?.split("@")[0][0] || "Demo User"}
+          </Text>
         </View>
-        <Text style={styles.username}>Demo User</Text>
-        <Text style={styles.email}>demo@example.com</Text>
+        <Text style={styles.username}>
+          {user?.displayName || user?.email?.split("@")[0] || "Demo User"}
+        </Text>
+        <Text style={styles.email}>{user?.email || "Demo User"}</Text>
       </View>
 
       <View style={styles.menuContainer}>

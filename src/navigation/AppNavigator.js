@@ -10,10 +10,11 @@ import LoginScreen from "../screens/LoginScreen";
 import ProfileScreen from "../screens/ProfileScreen";
 import ImageCaptureScreen from "../screens/ImageCaptureScreen";
 import HomeScreen from "../screens/HomeScreen";
-import TimeLineScreen from "../screens/TimeLine";
+import TimeLineScreen from "../screens/LLM";
 import SettingsScreen from "../screens/SettingsScreen";
 import CustomTabBar from "../components/CustomTabBar";
 import ScanResultsScreen from "../screens/ScanResultsScreen";
+import RecentActivityDetail from "../screens/RecentActivityDetail";
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -40,8 +41,21 @@ const AppNavigator = () => {
   return (
     <NavigationContainer>
       <Stack.Navigator initialRouteName={user ? "Main" : "Login"}>
-        <Stack.Screen name="SignUp" component={SignUpScreen} />
-        <Stack.Screen name="Login" component={LoginScreen} />
+        <Stack.Screen
+          name="SignUp"
+          component={SignUpScreen}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="Login"
+          component={LoginScreen}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="RecentActivityDetail"
+          component={RecentActivityDetail}
+          options={{ headerShown: false }}
+        />
         <Stack.Screen
           name="ImageCaptureScreen"
           component={ImageCaptureScreen}

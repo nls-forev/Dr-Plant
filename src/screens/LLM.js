@@ -1,10 +1,10 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 
-const TimeLine = () => {
+const LLM = () => {
   return (
     <View style={styles.container}>
-      <Text style={styles.text}>Timeline Screen</Text>
+      <Text style={styles.text}>LLM Screen</Text>
     </View>
   );
 };
@@ -22,4 +22,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default TimeLine;
+export default LLM;

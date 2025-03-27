@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -17,50 +17,11 @@ import * as FileSystem from "expo-file-system";
 import * as tf from "@tensorflow/tfjs";
 import { bundleResourceIO } from "@tensorflow/tfjs-react-native";
 import * as jpeg from "jpeg-js";
-
+import { CLASS_NAMES } from "../constants/plant_name_desc";
 import "@tensorflow/tfjs-react-native"; // Initialize TF.js React Native backend
 
-// Your 38-class list
-const CLASS_NAMES = [
-  "Apple___Apple_scab",
-  "Apple___Black_rot",
-  "Apple___Cedar_apple_rust",
-  "Apple___healthy",
-  "Blueberry___healthy",
-  "Cherry_(including_sour)___Powdery_mildew",
-  "Cherry_(including_sour)___healthy",
-  "Corn_(maize)___Cercospora_leaf_spot Gray_leaf_spot",
-  "Corn_(maize)___Common_rust_",
-  "Corn_(maize)___Northern_Leaf_Blight",
-  "Corn_(maize)___healthy",
-  "Grape___Black_rot",
-  "Grape___Esca_(Black_Measles)",
-  "Grape___Leaf_blight_(Isariopsis_Leaf_Spot)",
-  "Grape___healthy",
-  "Orange___Haunglongbing_(Citrus_greening)",
-  "Peach___Bacterial_spot",
-  "Peach___healthy",
-  "Pepper,_bell___Bacterial_spot",
-  "Pepper,_bell___healthy",
-  "Potato___Early_blight",
-  "Potato___Late_blight",
-  "Potato___healthy",
-  "Raspberry___healthy",
-  "Soybean___healthy",
-  "Squash___Powdery_mildew",
-  "Strawberry___Leaf_scorch",
-  "Strawberry___healthy",
-  "Tomato___Bacterial_spot",
-  "Tomato___Early_blight",
-  "Tomato___Late_blight",
-  "Tomato___Leaf_Mold",
-  "Tomato___Septoria_leaf_spot",
-  "Tomato___Spider_mites Two-spotted_spider_mite",
-  "Tomato___Target_Spot",
-  "Tomato___Tomato_Yellow_Leaf_Curl_Virus",
-  "Tomato___Tomato_mosaic_virus",
-  "Tomato___healthy",
-];
+// (Optional) For reloading the entire app:
+import * as Updates from "expo-updates";
 
 const ImageCaptureScreen = () => {
   const { theme } = useTheme();
@@ -69,37 +30,54 @@ const ImageCaptureScreen = () => {
   const [imageSource, setImageSource] = useState(null);
   const [isPredicting, setIsPredicting] = useState(false);
   const [model, setModel] = useState(null);
+  const [loadingModel, setLoadingModel] = useState(false);
 
-  // Load the model once component mounts
-  useEffect(() => {
-    const loadModel = async () => {
-      try {
-        await tf.ready();
+  // 1. Define a reusable loadModel function
+  const loadModel = useCallback(async () => {
+    try {
+      setLoadingModel(true);
+      await tf.ready();
 
-        // Load your TFJS model
-        const loadedModel = await tf.loadLayersModel(
-          bundleResourceIO(require("../../assets/tfjs_model/model.json"), [
+      // Load your TFJS model
+      const loadedModel = await tf.loadLayersModel(
+        bundleResourceIO(
+          require("../../assets/tfjs_model/model.json"),
+          [
             require("../../assets/tfjs_model/group1-shard1of5.bin"),
             require("../../assets/tfjs_model/group1-shard2of5.bin"),
             require("../../assets/tfjs_model/group1-shard3of5.bin"),
             require("../../assets/tfjs_model/group1-shard4of5.bin"),
             require("../../assets/tfjs_model/group1-shard5of5.bin"),
-          ])
-        );
+          ]
+        )
+      );
 
-        setModel(loadedModel);
-        console.log("Model loaded successfully");
-      } catch (error) {
-        console.error("Error loading model:", error);
-        Alert.alert(
-          "Model Load Failed",
-          "Unable to load the prediction model: " + error.message
-        );
-      }
-    };
-
-    loadModel();
+      setModel(loadedModel);
+      console.log("Model loaded successfully");
+    } catch (error) {
+      console.error("Error loading model:", error);
+      Alert.alert(
+        "Model Load Failed",
+        "Unable to load the prediction model: " + error.message
+      );
+    } finally {
+      setLoadingModel(false);
+    }
   }, []);
+
+  // 2. Load the model once component mounts
+  useEffect(() => {
+    loadModel();
+  }, [loadModel]);
+
+  // 3. Optionally reload the entire Expo app
+  const reloadApp = async () => {
+    try {
+      await Updates.reloadAsync();
+    } catch (error) {
+      Alert.alert("Reload Error", "Failed to reload app: " + error.message);
+    }
+  };
 
   // Preprocess image: decode, resize to 224x224, normalize [0..1]
   const preprocessImage = async (uri) => {
@@ -138,7 +116,7 @@ const ImageCaptureScreen = () => {
       return;
     }
     if (!model) {
-      Alert.alert("Model Error", "Model is not loaded yet.");
+      Alert.alert("Model Error", "Model not loaded. Try reloading the model.");
       return;
     }
 
@@ -153,8 +131,6 @@ const ImageCaptureScreen = () => {
 
       // Convert Float32Array -> normal JS array
       const probabilities = Array.from(predictionArray);
-
-      // Find max index
 
       // Create array of { label, confidence }
       const labelConfidencePairs = probabilities.map((confidence, idx) => ({
@@ -357,6 +333,10 @@ const ImageCaptureScreen = () => {
       color: theme.text,
       textAlign: "right",
     },
+    reloadContainer: {
+      marginTop: 20,
+      alignItems: "center",
+    },
   });
 
   return (
@@ -402,6 +382,27 @@ const ImageCaptureScreen = () => {
         <View style={styles.predictionContainer}>
           <ActivityIndicator size="large" color={theme.primary} />
           <Text style={styles.loadingText}>Analyzing image...</Text>
+        </View>
+      )}
+
+      {/* If the model isn't loaded or there's an error, show reload options */}
+      {!model && !loadingModel && (
+        <View style={styles.reloadContainer}>
+          <Text style={{ color: theme.text, marginBottom: 10 }}>
+            Model not loaded. Try reloading:
+          </Text>
+          <Button title="Reload Model" onPress={loadModel} />
+          {/* OR reload entire app (optional) */}
+          <View style={{ marginTop: 10 }}>
+            <Button title="Reload App" onPress={reloadApp} />
+          </View>
+        </View>
+      )}
+
+      {loadingModel && (
+        <View style={styles.reloadContainer}>
+          <ActivityIndicator size="large" color={theme.primary} />
+          <Text style={styles.loadingText}>Loading model...</Text>
         </View>
       )}
     </ScrollView>

@@ -1,6 +1,13 @@
 // LoginScreen.js
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  TouchableOpacity, 
+  Alert, 
+  ActivityIndicator 
+} from 'react-native';
 import Input from '../components/Input';
 import Button from '../components/Button';
 import { useTheme } from '../hooks/useTheme';
@@ -39,7 +46,6 @@ const LoginScreen = ({ navigation }) => {
     setLoading(true);
     try {
       console.log('Attempting login with email:', email);
-      // Check that firebase.auth is defined before calling it
       if (!firebase.auth) {
         console.error('firebase.auth is undefined');
         throw new Error('Firebase auth is not available.');
@@ -101,6 +107,14 @@ const LoginScreen = ({ navigation }) => {
     loadingIndicator: {
       marginTop: 10,
     },
+    signUpLinkContainer: {
+      marginTop: 20,
+    },
+    signUpLinkText: {
+      color: theme.primary,
+      textAlign: 'center',
+      textDecorationLine: 'underline',
+    },
   });
 
   return (
@@ -122,8 +136,17 @@ const LoginScreen = ({ navigation }) => {
       />
       <Button title="Login" onPress={handleLogin} />
       {loading && <ActivityIndicator style={styles.loadingIndicator} color={theme.primary} />}
+      
       <TouchableOpacity style={styles.demoLoginButton} onPress={handleDemoLogin}>
         <Text style={styles.demoLoginText}>Login with Demo Account</Text>
+      </TouchableOpacity>
+
+      {/* --- Add this block for "Sign Up" navigation --- */}
+      <TouchableOpacity 
+        style={styles.signUpLinkContainer} 
+        onPress={() => navigation.navigate('SignUp')}
+      >
+        <Text style={styles.signUpLinkText}>Don't have an account? Sign Up</Text>
       </TouchableOpacity>
     </View>
   );
