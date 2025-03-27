@@ -5,7 +5,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   FlatList,
-  Image,
   ActivityIndicator,
   RefreshControl,
   ScrollView,
@@ -29,31 +28,24 @@ const formatTimestamp = (date) => {
   return date.toLocaleDateString();
 };
 
+// Updated RecentActivityItem component
 const RecentActivityItem = ({ item, onPress }) => {
   return (
     <TouchableOpacity style={styles.activityPostContainer} onPress={onPress}>
-      {item.imageUri ? (
-        <Image
-          source={{ uri: item.imageUri }}
-          style={styles.activityImage}
-          resizeMode="cover"
-        />
-      ) : (
-        <View style={styles.activityImagePlaceholder}>
-          <Ionicons name="leaf" size={50} color="#DFFF00" />
-        </View>
-      )}
+      <Ionicons name="leaf" size={40} color="#DFFF00" />
       <View style={styles.activityPostDetails}>
-        <Text style={styles.activityPostLabel}>{item.bestLabel}</Text>
-        <Text style={styles.activityPostConfidence}>
-          Confidence: {(item.bestConfidence * 100).toFixed(2)}%
+        <Text
+          style={styles.activityPostLabel}
+          numberOfLines={1}
+          ellipsizeMode="tail"
+        >
+          {item.bestLabel}
         </Text>
         <Text style={styles.activityPostTime}>
-          {item.timestamp
-            ? formatTimestamp(item.timestamp.toDate())
-            : "Recently"}
+          {item.timestamp ? formatTimestamp(item.timestamp.toDate()) : "Recently"}
         </Text>
       </View>
+      <Ionicons name="chevron-forward" size={24} color="#FFFFFF" />
     </TouchableOpacity>
   );
 };
@@ -123,7 +115,6 @@ const HomeScreen = () => {
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.contentContainer}
-      // Pull-to-refresh is now on the ScrollView
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
@@ -142,8 +133,7 @@ const HomeScreen = () => {
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Discover Plants</Text>
         <Text style={styles.cardText}>
-          Scan your plants to identify diseases and get treatment
-          recommendations.
+          Scan your plants to identify diseases and get treatment recommendations.
         </Text>
         <TouchableOpacity
           style={styles.scanButton}
@@ -163,14 +153,13 @@ const HomeScreen = () => {
           keyExtractor={(item) => item.id}
           horizontal
           showsHorizontalScrollIndicator={false}
-          // Remove refreshControl from FlatList
           contentContainerStyle={{ paddingLeft: 10, paddingRight: 20 }}
         />
       ) : (
         <Text style={styles.noActivityText}>No recent scans</Text>
       )}
 
-      {/* Extra content or spacing at the bottom to allow vertical scrolling */}
+      {/* Extra spacing for scrolling */}
       <View style={{ height: 60 }} />
     </ScrollView>
   );
@@ -183,7 +172,7 @@ const styles = StyleSheet.create({
   contentContainer: {
     paddingTop: 20,
     paddingHorizontal: 20,
-    paddingBottom: 40, // extra space so we can scroll down
+    paddingBottom: 40,
   },
   title: {
     fontSize: 24,
@@ -247,34 +236,21 @@ const styles = StyleSheet.create({
   activityPostContainer: {
     backgroundColor: "#111111",
     borderRadius: 10,
-    // Make the card take up about 70% of the screen width
-    width: screenWidth * 0.7,
+    width: screenWidth * 0.45,
+    height: 80,
     marginRight: 10,
-    overflow: "hidden",
-  },
-  activityImage: {
-    width: "100%",
-    height: 160,
-  },
-  activityImagePlaceholder: {
-    width: "100%",
-    height: 160,
-    backgroundColor: "#222222",
-    justifyContent: "center",
+    flexDirection: "row",
     alignItems: "center",
+    paddingHorizontal: 10,
   },
   activityPostDetails: {
-    padding: 10,
+    flex: 1,
+    marginLeft: 10,
   },
   activityPostLabel: {
     color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "bold",
-  },
-  activityPostConfidence: {
-    color: "#AAAAAA",
-    fontSize: 14,
-    marginTop: 4,
   },
   activityPostTime: {
     color: "#AAAAAA",
