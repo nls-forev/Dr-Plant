@@ -1,9 +1,9 @@
 // AppNavigator.js
-import React, { useContext } from "react";
+import React from "react"; // No longer need useContext here, can use custom hook
 import { NavigationContainer } from "@react-navigation/native";
 import { createStackNavigator } from "@react-navigation/stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { AuthContext } from "../../App";
+import { useAuth } from "../context/AuthContext";
 
 import SignUpScreen from "../screens/SignUpScreen";
 import LoginScreen from "../screens/LoginScreen";
@@ -35,7 +35,7 @@ const MainTabNavigator = () => {
 };
 
 const AppNavigator = () => {
-  const { user } = useContext(AuthContext);
+  const { user } = useAuth();
   console.log("AppNavigator - User state:", user ? user.uid : "No user");
 
   return (

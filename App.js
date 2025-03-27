@@ -1,12 +1,13 @@
-import React, { createContext, useState, useEffect } from "react";
-import { StyleSheet, View, ActivityIndicator } from "react-native";
+import React from "react";
+import { StyleSheet, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import AppNavigator from "./src/navigation/AppNavigator";
 import { ThemeProvider } from "./src/theme/theme";
 import firebase from "firebase/compat/app";
 import "firebase/compat/auth";
+import { AuthProvider } from "./src/context/AuthContext"; // Import the Provider
 
-// Replace these with your Firebase project configuration
+// Your Firebase config (keep as is)
 const firebaseConfig = {
   apiKey: "API KEY",
   authDomain: "authDomain",
@@ -16,6 +17,7 @@ const firebaseConfig = {
   appId: "appId",
 };
 
+// Initialize Firebase (keep as is)
 if (!firebase.apps.length) {
   firebase.initializeApp(firebaseConfig);
   console.log("Firebase initialized successfully");
@@ -23,53 +25,33 @@ if (!firebase.apps.length) {
   console.log("Firebase already initialized");
 }
 
-console.log("Firebase object:", firebase);
-console.log("Firebase.auth:", firebase.auth);
+// No need for Firebase logs here anymore if they are in AuthProvider
+// console.log("Firebase object:", firebase);
+// console.log("Firebase.auth:", firebase.auth);
 
-export const AuthContext = createContext({
-  user: undefined, // undefined means "still loading"
-  setUser: () => {},
-});
+// Context is now defined in AuthContext.js
+// export const AuthContext = createContext(...) // REMOVE THIS
 
 const App = () => {
-  const [user, setUser] = useState(undefined);
-
-  useEffect(() => {
-    console.log("Setting up Firebase auth listener...");
-    const unsubscribe = firebase.auth().onAuthStateChanged((currentUser) => {
-      console.log("Auth state changed - Current User:", currentUser ? currentUser.uid : "No user");
-      setUser(currentUser);
-    });
-    return () => {
-      console.log("Cleaning up auth listener");
-      unsubscribe();
-    };
-  }, []);
-
-  if (user === undefined) {
-    return (
-      <SafeAreaProvider>
-        <SafeAreaView style={styles.safeArea}>
-          <View style={[styles.container, { justifyContent: "center", alignItems: "center" }]}>
-            <ActivityIndicator size="large" color="#DFFF00" />
-          </View>
-        </SafeAreaView>
-      </SafeAreaProvider>
-    );
-  }
+  // User state and useEffect are now managed by AuthProvider
+  // const [user, setUser] = useState(undefined); // REMOVE THIS
+  // useEffect(() => { ... }, []); // REMOVE THIS
+  // if (user === undefined) { ... } // REMOVE THIS loading indicator
 
   return (
-    <AuthContext.Provider value={{ user, setUser }}>
+    // Wrap everything in AuthProvider
+    <AuthProvider>
       <SafeAreaProvider>
         <SafeAreaView style={styles.safeArea}>
           <View style={styles.container}>
             <ThemeProvider>
+               {/* AppNavigator will now consume the context from AuthProvider */}
               <AppNavigator />
             </ThemeProvider>
           </View>
         </SafeAreaView>
       </SafeAreaProvider>
-    </AuthContext.Provider>
+    </AuthProvider> // Close AuthProvider
   );
 };
 

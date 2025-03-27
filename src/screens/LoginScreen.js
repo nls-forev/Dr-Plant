@@ -73,8 +73,8 @@ const LoginScreen = ({ navigation }) => {
   };
 
   const handleDemoLogin = () => {
-    setEmail('demo@example.com');
-    setPassword('demopassword');
+    setEmail('rj07605@gmail.com');
+    setPassword('123123');
     setIsDemoLoginActive(true);
     Alert.alert('Demo Login Activated', 'Click "Login" to proceed.');
   };
