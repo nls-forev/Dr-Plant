@@ -8,12 +8,12 @@ import "firebase/compat/auth";
 
 // Replace these with your Firebase project configuration
 const firebaseConfig = {
-  apiKey: "AIzaSyDAIoMHmhDw-BJ75cZsrPJTgALL5jdDL2s",
-  authDomain: "plantdisease-df992.firebaseapp.com",
-  projectId: "plantdisease-df992",
-  storageBucket: "third-eye-2293d.appspot.com",
-  messagingSenderId: "321173693128",
-  appId: "1:321173693128:android:c3bbe98027a18188affbfd",
+  apiKey: "API KEY",
+  authDomain: "authDomain",
+  projectId: "projectId",
+  storageBucket: "storageBucket",
+  messagingSenderId: "messagingSenderId",
+  appId: "appId",
 };
 
 if (!firebase.apps.length) {
