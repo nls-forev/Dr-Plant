@@ -1,18 +1,15 @@
-import React from "react"; // Removed useContext
+import React from "react";
 import { View, Text, TouchableOpacity, StyleSheet, Alert } from "react-native";
-import { User, Clock, Settings, HelpCircle, LogOut } from "lucide-react-native"; // Added LogOut
-// import { AuthContext } from "../../App"; // REMOVE THIS
-import { useAuth } from "../context/AuthContext"; // IMPORT useAuth
-import firebase from "firebase/compat/app"; // Needed for logout
+import { User, Clock, Settings, HelpCircle, LogOut } from "lucide-react-native";
+import { useAuth } from "../context/AuthContext";
+import firebase from "firebase/compat/app";
 import "firebase/compat/auth";
-import { useNavigation } from "@react-navigation/native"; // To navigate after logout if needed
+import { useNavigation } from "@react-navigation/native";
 
 const ProfileScreen = () => {
-  // const { user } = useContext(AuthContext); // REPLACE THIS
-  const { user } = useAuth(); // USE THE HOOK
-  const navigation = useNavigation(); // Get navigation object
+  const { user } = useAuth();
+  const navigation = useNavigation();
 
-  // --- Logout Handler ---
   const handleLogout = async () => {
     Alert.alert("Confirm Logout", "Are you sure you want to log out?", [
       { text: "Cancel", style: "cancel" },
@@ -21,13 +18,8 @@ const ProfileScreen = () => {
         style: "destructive",
         onPress: async () => {
           try {
-            console.log("Attempting to log out...");
             await firebase.auth().signOut();
-            console.log("User logged out successfully.");
-            // Auth state listener in AuthProvider will handle navigation update
-            // Optionally, navigate explicitly if needed, e.g., navigation.navigate('Login');
           } catch (error) {
-            console.error("Logout Error:", error);
             Alert.alert("Logout Error", error.message || "Failed to log out.");
           }
         },
@@ -35,23 +27,17 @@ const ProfileScreen = () => {
     ]);
   };
 
-  // --- Placeholder Navigation Handlers ---
   const handleNavigate = (screenName) => {
     Alert.alert(
       "Coming Soon",
       `Navigation to ${screenName} is not implemented yet.`
     );
-    // Example: navigation.navigate(screenName);
   };
 
-  // --- Get User Initials ---
   const getInitials = (name, email) => {
-    if (name) {
-      return name[0].toUpperCase();
-    } else if (email) {
-      return email[0].toUpperCase();
-    }
-    return "?"; // Fallback initial
+    if (name) return name[0].toUpperCase();
+    if (email) return email[0].toUpperCase();
+    return "?";
   };
 
   const displayName = user?.displayName || user?.email?.split("@")[0] || "User";
@@ -129,7 +115,6 @@ const ProfileScreen = () => {
     },
   });
 
-  // Helper component for menu items
   const MenuIcon = ({ icon: Icon, color = "white" }) => (
     <View style={styles.menuIcon}>
       <Icon color={color} size={22} />
@@ -140,6 +125,7 @@ const ProfileScreen = () => {
     <View style={styles.container}>
       <View style={styles.profileHeader}>
         <View style={styles.profileCircle}>
+          {/* Ensure text is wrapped in Text component */}
           <Text style={styles.profileInitial}>{displayInitial}</Text>
         </View>
         <Text style={styles.username}>{displayName}</Text>
@@ -193,8 +179,6 @@ const ProfileScreen = () => {
         </TouchableOpacity>
       </View>
 
-      {/* Remove absolute positioned camera button if not needed here */}
-      {/* <TouchableOpacity style={styles.cameraButton}> ... </TouchableOpacity> */}
     </View>
   );
 };
