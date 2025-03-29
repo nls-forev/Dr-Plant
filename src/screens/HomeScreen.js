@@ -170,7 +170,7 @@ const HomeScreen = () => {
         </Text>
         <TouchableOpacity
           style={styles.scanButton}
-          onPress={() => navigation.navigate("Scan")} // Ensure 'Scan' matches your Tab Navigator screen name
+          onPress={() => navigation.navigate("ImageCaptureScreen")} // Ensure 'Scan' matches your Tab Navigator screen name
         >
           <Ionicons name="camera" size={20} color="#000000" />
           <Text style={styles.scanButtonText}>Scan Plant</Text>

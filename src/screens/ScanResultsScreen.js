@@ -24,7 +24,7 @@ import Markdown from "react-native-markdown-display";
 // This key WILL BE STOLEN if found in your app's code.
 // For production, use a backend proxy server (e.g., Cloud Functions) to protect your key.
 const GEMINI_API_KEY = "AIzaSyDEhRYRo_ajQdvHlEdm44vu_MSPSX5T5Vw"; // <-- PASTE YOUR KEY FOR TESTING ONLY
-const GEMINI_MODEL_NAME = "gemini-1.5-flash-latest"; // Using latest flash model
+const GEMINI_MODEL_NAME = "gemini-2.0-flash"; // Using latest flash model
 // --- End Gemini LLM Configuration ---
 
 // Simple check if the key is still the placeholder
