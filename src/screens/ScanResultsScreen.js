@@ -25,8 +25,7 @@ import Markdown from "react-native-markdown-display"; // For AI description disp
 
 // --- Gemini Config for Description Fetch ---
 // 🚨 IMPORTANT: Use environment variables or a secure config method for API keys!
-const GEMINI_API_KEY_DESC =
-  process.env.EXPO_PUBLIC_GEMINI_API_KEY_DESC || "YOUR_DESC_API_KEY"; // Replace with your actual key or env var
+const GEMINI_API_KEY_DESC = "AIzaSyDEhRYRo_ajQdvHlEdm44vu_MSPSX5T5Vw"; // Replace with your actual key or env var
 const GEMINI_MODEL_NAME_DESC = "gemini-1.5-flash";
 // Stricter check for placeholder/invalid key
 const isApiKeyValidDesc =

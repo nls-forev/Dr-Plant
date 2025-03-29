@@ -1,4 +1,4 @@
-// src/screens/ImageCaptureScreen.js (MODIFIED VERSION)
+// src/screens/ImageCaptureScreen.js
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   View,
@@ -14,243 +14,299 @@ import {
   Dimensions,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import * as FileSystem from "expo-file-system";
 import * as tf from "@tensorflow/tfjs";
-import { bundleResourceIO, decodeJpeg } from "@tensorflow/tfjs-react-native";
-import { CLASS_NAMES } from "../constants/plant_name_desc"; // Ensure path is correct
-import "@tensorflow/tfjs-react-native";
-import { t } from "../localization/strings"; // Ensure path is correct
-import { Ionicons } from "@expo/vector-icons";
-import Constants from "expo-constants"; // Keep if using for version or other constants
+import { decodeJpeg } from "@tensorflow/tfjs-react-native"; // bundleResourceIO is now in modelLoader
+import "@tensorflow/tfjs-react-native"; // Ensure backend is registered
+import { CLASS_NAMES } from "../constants/plant_name_desc"; // Adjust path
+import { t } from "../localization/strings"; // Adjust path
+import { Ionicons, Feather } from "@expo/vector-icons"; // Using Feather for X icon
+
+// Import the model loader utility
+import {
+  getModel,
+  isModelLoading,
+  getModelError,
+  retryLoadModel,
+} from "../utils/modelLoader"; // Adjust path
 
 const { width: screenWidth } = Dimensions.get("window");
+const IMAGE_SIZE = screenWidth * 0.85; // Make image area slightly larger
+const TENSOR_INPUT_SIZE = 224; // Model's expected input size
 
 const ImageCaptureScreen = () => {
-  // --- Theme --- (Consistent dark theme)
+  // --- Theme ---
   const theme = {
     background: "#0A0A0A",
     text: "#EFEFEF",
     textSecondary: "#AEAEB2",
-    primary: "#BFFF00",
+    primary: "#BFFF00", // Lime green accent
     primaryDisabled: "#5A6A00",
-    inputBackground: "#1C1C1E",
-    error: "#FF9A9A",
+    inputBackground: "#1C1C1E", // Dark grey for placeholders/inputs
+    error: "#FF6B6B", // Softer red for errors
     buttonTextDark: "#111111",
-    placeholderIcon: "#888",
-    card: "#1C1C1E",
-    border: "#2C2C2E",
+    placeholderIcon: "#666", // Slightly darker placeholder icon
+    card: "#1A1A1A", // Very dark card background
+    border: "#2C2C2E", // Subtle border color
+    buttonSecondaryBg: "#2C2C2E", // Background for secondary buttons
+    buttonSecondaryText: "#EFEFEF",
   };
 
   // --- State & Hooks ---
   const navigation = useNavigation();
-  const [imageSource, setImageSource] = useState(null);
+  const [imageSource, setImageSource] = useState(null); // { uri: string }
   const [isPredicting, setIsPredicting] = useState(false);
-  const [model, setModel] = useState(null);
-  const [loadingModel, setLoadingModel] = useState(true);
-  const [modelError, setModelError] = useState(null);
-  const [cameraPermissionStatus, setCameraPermissionStatus] = useState(null);
-  const [libraryPermissionStatus, setLibraryPermissionStatus] = useState(null);
+  const [modelStatus, setModelStatus] = useState({
+    // Combined model status state
+    loading: isModelLoading(),
+    error: getModelError(),
+  });
   const isMounted = useRef(true);
 
-  // --- Permissions ---
-  const requestCameraPermission = useCallback(async () => {
-    try {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (isMounted.current) setCameraPermissionStatus(status);
-      return status === "granted";
-    } catch (e) {
-      Alert.alert(t("error"), t("error_permission_denied"));
-      return false;
-    }
-  }, []);
-  const requestLibraryPermission = useCallback(async () => {
-    try {
-      const { status } =
-        await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (isMounted.current) setLibraryPermissionStatus(status);
-      return status === "granted";
-    } catch (e) {
-      Alert.alert(t("error"), t("error_permission_denied"));
-      return false;
-    }
-  }, []);
+  // --- Effect for Mount/Unmount Tracking ---
   useEffect(() => {
-    const check = async () => {
-      const cs = await ImagePicker.getCameraPermissionsAsync();
-      const ls = await ImagePicker.getMediaLibraryPermissionsAsync();
-      if (isMounted.current) {
-        setCameraPermissionStatus(cs.status);
-        setLibraryPermissionStatus(ls.status);
-      }
-    };
-    check();
+    isMounted.current = true;
     return () => {
       isMounted.current = false;
     };
   }, []);
 
-  // --- Model Loading ---
-  const loadModel = useCallback(async () => {
-    if (model || modelError) return;
-    setLoadingModel(true);
-    setModelError(null);
-    try {
-      await tf.ready();
-      const mj = require("../../assets/tfjs_model/model.json");
-      const mw = [
-        require("../../assets/tfjs_model/group1-shard1of5.bin"),
-        require("../../assets/tfjs_model/group1-shard2of5.bin"),
-        require("../../assets/tfjs_model/group1-shard3of5.bin"),
-        require("../../assets/tfjs_model/group1-shard4of5.bin"),
-        require("../../assets/tfjs_model/group1-shard5of5.bin"),
-      ];
-      const lm = await tf.loadLayersModel(bundleResourceIO(mj, mw));
-      if (isMounted.current) setModel(lm);
-      else lm.dispose();
-    } catch (e) {
-      if (isMounted.current) setModelError(t("error_model_load"));
-      console.error("Model Load Err:", e);
-    } finally {
-      if (isMounted.current) setLoadingModel(false);
-    }
-  }, [model, modelError]);
-  useEffect(() => {
-    loadModel();
-  }, [loadModel]);
+  // --- Effect to Trigger Initial Model Load (if needed) & Update Status ---
+  useFocusEffect(
+    useCallback(() => {
+      console.log("ImageCaptureScreen Focused");
+      // Update status from loader on focus
+      if (isMounted.current) {
+        setModelStatus({ loading: isModelLoading(), error: getModelError() });
+      }
+
+      // Trigger loading only if it hasn't started and there's no error
+      if (!isModelLoading() && !getModelError()) {
+        getModel()
+          .catch((error) => {
+            // Catch error here if initial load fails and update local state
+            console.error("Initial model load trigger failed:", error);
+            if (isMounted.current) {
+              setModelStatus({ loading: false, error: error });
+            }
+          })
+          .finally(() => {
+            // Update status again after attempt finishes
+            if (isMounted.current) {
+              setModelStatus({
+                loading: isModelLoading(),
+                error: getModelError(),
+              });
+            }
+          });
+      }
+    }, []) // Empty dependency array: run on focus
+  );
+
+  // --- Permissions ---
+  const requestPermission = useCallback(
+    async (permissionType) => {
+      let status;
+      let permissionName = "";
+      try {
+        if (permissionType === "camera") {
+          permissionName = "Camera";
+          const result = await ImagePicker.requestCameraPermissionsAsync();
+          status = result.status;
+        } else {
+          permissionName = "Media Library";
+          const result =
+            await ImagePicker.requestMediaLibraryPermissionsAsync();
+          status = result.status;
+        }
+
+        if (status !== "granted") {
+          Alert.alert(
+            t("error_permission_denied"),
+            t("permission_required_message", { permission: permissionName }), // Add translation like "Permission required for {permission}"
+            [
+              { text: t("cancel"), style: "cancel" },
+              { text: t("settings"), onPress: () => Linking.openSettings() }, // Deeplink to settings
+            ]
+          );
+          return false;
+        }
+        return true;
+      } catch (e) {
+        console.error(`Error requesting ${permissionName} permission:`, e);
+        Alert.alert(t("error"), t("error_permission_request")); // Add translation
+        return false;
+      }
+    },
+    [t]
+  ); // Include t in dependencies
 
   // --- Image Processing ---
   const preprocessImage = async (uri) => {
     try {
-      const b64 = await FileSystem.readAsStringAsync(uri, {
+      console.log("Preprocessing image:", uri);
+      const imgB64 = await FileSystem.readAsStringAsync(uri, {
         encoding: FileSystem.EncodingType.Base64,
       });
-      const buf = tf.util.encodeString(b64, "base64").buffer;
-      const raw = new Uint8Array(buf);
-      const imgTensor = decodeJpeg(raw);
+      const imgBuffer = tf.util.encodeString(imgB64, "base64").buffer;
+      const raw = new Uint8Array(imgBuffer);
+      let imgTensor = decodeJpeg(raw); // Use TFJS JPEG decoder
+
       const processed = tf.tidy(() => {
-        const r = tf.image.resizeBilinear(imgTensor, [224, 224]).toFloat();
-        const n = r.div(255.0);
-        return n.expandDims(0);
+        // Resize and normalize the image tensor
+        const resized = tf.image
+          .resizeBilinear(imgTensor, [TENSOR_INPUT_SIZE, TENSOR_INPUT_SIZE])
+          .toFloat();
+        // Normalize: Assuming model expects 0-1 range
+        const normalized = resized.div(255.0);
+        // Expand dimensions to add batch size of 1
+        return normalized.expandDims(0);
       });
-      tf.dispose(imgTensor);
+
+      tf.dispose(imgTensor); // Dispose the raw tensor
+      console.log("Preprocessing successful.");
       return processed;
-    } catch (e) {
-      console.error("Preprocess Err:", e);
-      throw new Error(t("error_prediction") + " " + t("error_general"));
+    } catch (error) {
+      console.error("Image Preprocessing Error:", error);
+      throw new Error(
+        t("error_image_preprocess") || "Failed to process image."
+      );
     }
   };
 
   // --- Prediction Handler ---
   const handlePredict = async () => {
     if (!imageSource?.uri) {
-      Alert.alert(t("error"), t("img_capture_tap_select"));
+      Alert.alert(t("error"), t("img_capture_select_first")); // More specific message
       return;
     }
-    if (!model) {
-      Alert.alert(
-        t("error"),
-        loadingModel
-          ? t("img_capture_loading_model")
-          : modelError || t("error_model_load")
-      );
-      return;
+    if (isPredicting || modelStatus.loading || modelStatus.error) {
+      console.log("Prediction skipped: busy, loading, or error state.");
+      return; // Prevent prediction if busy, loading, or model error
     }
-    if (isPredicting) return;
-    setIsPredicting(true);
+
+    setIsPredicting(true); // Set busy state
     let tensor = null;
+    let modelInstance = null;
+
     try {
+      console.log("Attempting to get model instance...");
+      modelInstance = await getModel(); // Ensure model is loaded/get instance
+      if (!modelInstance)
+        throw new Error("Model instance is null after getModel call."); // Should not happen if getModel works
+
+      console.log("Preprocessing image for prediction...");
       tensor = await preprocessImage(imageSource.uri);
-      if (!tensor) throw new Error("Preprocess null tensor.");
-      const prediction = model.predict(tensor);
+      if (!tensor) throw new Error("Preprocessing returned null tensor.");
+
+      console.log("Running prediction...");
+      const prediction = modelInstance.predict(tensor); // Use the loaded model
       let values;
       try {
+        // Asynchronously get the prediction data
         values = await prediction.data();
       } catch (e) {
-        throw new Error(t("error_prediction") + " " + t("error_general"));
-      } finally {
-        if (prediction) tf.dispose(prediction);
-      }
-      if (!CLASS_NAMES || CLASS_NAMES.length === 0)
-        throw new Error("Class names missing.");
-      const results = Array.from(values)
-        .map((c, i) => ({
-          label: CLASS_NAMES[i]?.replace(/_/g, " ") || "?",
-          confidence: Number(c.toFixed(4)),
-        }))
-        .sort((a, b) => b.confidence - a.confidence)
-        .slice(0, 5);
-      if (results.length === 0 || results[0].confidence < 0.1) {
-        Alert.alert(
-          t("scan_results_title"),
-          "Analysis complete, confidence low. Check image quality."
+        console.error("Error getting prediction data:", e);
+        throw new Error(
+          t("error_prediction_process") ||
+            "Error processing prediction results."
         );
+      } finally {
+        if (prediction) tf.dispose(prediction); // Dispose prediction tensor
       }
+
+      if (!CLASS_NAMES || CLASS_NAMES.length === 0)
+        throw new Error("Class names configuration missing.");
+
+      // Process prediction results
+      const results = Array.from(values)
+        .map((confidence, index) => ({
+          label: CLASS_NAMES[index]?.replace(/_/g, " ") || `Unknown ${index}`,
+          confidence: Number(confidence.toFixed(4)), // Format confidence
+        }))
+        .sort((a, b) => b.confidence - a.confidence) // Sort by confidence descending
+        .slice(0, 5); // Take top 5 results
+
+      console.log("Top 5 Prediction Results:", results);
+
+      // Check if any meaningful prediction was made
+      if (results.length === 0 || results[0].confidence < 0.1) {
+        // Adjust threshold if needed
+        Alert.alert(t("scan_results_title"), t("scan_low_confidence")); // Add translation
+        // Still navigate, but ScanResultsScreen should handle low confidence display
+      }
+
+      // Navigate to results screen
       navigation.navigate("ScanResults", {
         top5: results,
         imageUri: imageSource.uri,
-        bestLabel: results[0]?.label || "?",
+        bestLabel: results[0]?.label || t("Unknown"),
         bestConfidence: results[0]?.confidence || 0,
       });
-    } catch (e) {
-      Alert.alert(t("error"), e.message || t("error_prediction"));
+    } catch (error) {
+      console.error("Prediction failed:", error);
+      Alert.alert(t("error"), error.message || t("error_prediction"));
     } finally {
-      if (tensor) tf.dispose(tensor);
-      if (isMounted.current) setIsPredicting(false);
+      if (tensor) tf.dispose(tensor); // Dispose input tensor
+      if (isMounted.current) setIsPredicting(false); // Reset busy state
     }
   };
 
   // --- Image Picker Handlers ---
-  const handleCaptureImage = useCallback(async () => {
-    let granted = cameraPermissionStatus === "granted";
-    if (!granted) granted = await requestCameraPermission();
-    if (!granted) {
-      Alert.alert(
-        t("error_permission_denied"),
-        t("img_capture_permission_needed"),
-        [
-          { text: t("cancel") },
-          { text: t("settings"), onPress: () => Linking.openSettings() },
-        ]
-      );
-      return;
-    }
-    try {
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        quality: 0.8,
-      });
-      if (!result.canceled && result.assets?.length > 0) {
-        if (isMounted.current) setImageSource({ uri: result.assets[0].uri });
-      }
-    } catch (error) {
-      Alert.alert(t("error_camera"), error.message || t("error_general"));
-    }
-  }, [cameraPermissionStatus, requestCameraPermission]);
+  const handlePickImage = useCallback(
+    async (useCamera = false) => {
+      const permissionType = useCamera ? "camera" : "library";
+      const granted = await requestPermission(permissionType);
+      if (!granted) return; // Stop if permission not granted
 
-  const handleChooseFromLibrary = useCallback(async () => {
-    // Handles tap on placeholder
-    let granted = libraryPermissionStatus === "granted";
-    if (!granted) granted = await requestLibraryPermission();
-    if (!granted) {
-      Alert.alert(t("error_permission_denied"), "Library access needed.", [
-        { text: t("cancel") },
-        { text: t("settings"), onPress: () => Linking.openSettings() },
-      ]);
-      return;
-    }
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
+      const options = {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        quality: 0.8,
-      });
-      if (!result.canceled && result.assets?.length > 0) {
-        if (isMounted.current) setImageSource({ uri: result.assets[0].uri });
+        quality: 0.8, // Balance quality and size
+        allowsEditing: false, // Keep original image usually better for analysis
+      };
+
+      let result;
+      try {
+        if (useCamera) {
+          result = await ImagePicker.launchCameraAsync(options);
+        } else {
+          result = await ImagePicker.launchImageLibraryAsync(options);
+        }
+
+        if (!result.canceled && result.assets && result.assets.length > 0) {
+          const selectedUri = result.assets[0].uri;
+          if (isMounted.current) {
+            console.log("Image selected/captured:", selectedUri);
+            setImageSource({ uri: selectedUri }); // Update the image source state
+          }
+        }
+      } catch (error) {
+        console.error("Image Picker Error:", error);
+        Alert.alert(
+          t(useCamera ? "error_camera" : "error_library"),
+          error.message || t("error_general")
+        );
       }
-    } catch (error) {
-      Alert.alert(t("error_library"), error.message || t("error_general"));
-    }
-  }, [libraryPermissionStatus, requestLibraryPermission]);
+    },
+    [requestPermission, t]
+  ); // Include t
+
+  // --- Retry Model Load ---
+  const handleRetryLoad = () => {
+    setModelStatus({ loading: true, error: null }); // Show loading state immediately
+    retryLoadModel()
+      .catch((error) => {
+        console.error("Retry model load failed:", error);
+        if (isMounted.current) setModelStatus({ loading: false, error: error });
+      })
+      .finally(() => {
+        // Update status again after attempt finishes
+        if (isMounted.current) {
+          setModelStatus({ loading: isModelLoading(), error: getModelError() });
+        }
+      });
+  };
 
   // --- Component Styles ---
   const styles = StyleSheet.create({
@@ -258,178 +314,241 @@ const ImageCaptureScreen = () => {
     scrollContainer: {
       flexGrow: 1,
       alignItems: "center",
-      paddingTop: 20,
+      paddingTop: Platform.OS === "ios" ? 40 : 30, // More top padding
       paddingHorizontal: 20,
-      paddingBottom: 50,
+      paddingBottom: 40,
     },
     imageContainer: {
-      width: screenWidth * 0.8,
-      height: screenWidth * 0.8,
-      borderRadius: 16,
+      width: IMAGE_SIZE,
+      height: IMAGE_SIZE,
+      borderRadius: 20, // More rounded
       backgroundColor: theme.inputBackground,
-      marginBottom: 20,
+      marginBottom: 30, // Increased space below image
       overflow: "hidden",
       justifyContent: "center",
       alignItems: "center",
       borderWidth: 1,
       borderColor: theme.border,
+      position: "relative", // For close button positioning
     },
     imagePlaceholderContent: { alignItems: "center", padding: 20 },
     imagePlaceholderText: {
       color: theme.textSecondary,
-      marginTop: 10,
+      marginTop: 15,
       textAlign: "center",
-      fontSize: 15,
+      fontSize: 16,
+      lineHeight: 22,
     },
     image: { width: "100%", height: "100%" },
-    tipsContainer: {
-      width: "90%",
-      maxWidth: 400,
-      padding: 15,
-      backgroundColor: theme.card,
-      borderRadius: 12,
-      marginBottom: 25,
+    clearImageButton: {
+      position: "absolute",
+      top: 10,
+      right: 10,
+      backgroundColor: "rgba(0, 0, 0, 0.5)",
+      borderRadius: 15,
+      padding: 6,
+      zIndex: 10,
     },
-    tipsHeader: {
-      color: theme.text,
-      fontSize: 16,
-      fontWeight: "600",
-      marginBottom: 8,
-      textAlign: "center",
-    },
-    tipsText: {
-      color: theme.textSecondary,
-      fontSize: 14,
-      lineHeight: 20,
-      textAlign: "center",
-    },
-    buttonRow: { width: "90%", maxWidth: 400, alignSelf: "center", gap: 15 },
-    button: {
-      backgroundColor: theme.card,
+    buttonRow: {
       flexDirection: "row",
-      paddingVertical: 16,
-      paddingHorizontal: 20,
+      justifyContent: "space-between", // Space out buttons
+      width: "100%",
+      maxWidth: 450, // Limit max width
+      marginBottom: 25, // Space below the row
+    },
+    choiceButton: {
+      backgroundColor: theme.buttonSecondaryBg,
+      flexDirection: "row",
+      paddingVertical: 14,
+      paddingHorizontal: 15, // Adjust padding
       borderRadius: 12,
       alignItems: "center",
       justifyContent: "center",
       borderWidth: 1,
       borderColor: theme.border,
+      flex: 1, // Make buttons share space
+      marginHorizontal: 5, // Add space between buttons
     },
-    buttonPrimary: {
+    choiceButtonText: {
+      color: theme.buttonSecondaryText,
+      fontSize: 15,
+      fontWeight: "500",
+      marginLeft: 8,
+    },
+    analysisButtonContainer: {
+      width: "100%",
+      maxWidth: 450,
+      marginTop: 10, // Space above analysis button
+      alignItems: "center", // Center button if needed
+    },
+    analysisButton: {
       backgroundColor: theme.primary,
-      borderColor: theme.primary,
+      flexDirection: "row",
+      paddingVertical: 18, // Make primary button taller
+      paddingHorizontal: 20,
+      borderRadius: 14, // Slightly more rounded
+      alignItems: "center",
+      justifyContent: "center",
+      minWidth: "80%", // Ensure decent width
+      alignSelf: "center", // Center horizontally
+      shadowColor: theme.primary, // Add glow effect
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.4,
+      shadowRadius: 6,
+      elevation: 8,
     },
-    buttonDisabled: { opacity: 0.6 },
-    buttonText: {
-      color: theme.text,
-      fontSize: 16,
-      fontWeight: "600",
-      marginLeft: 10,
+    analysisButtonDisabled: {
+      backgroundColor: theme.primaryDisabled,
+      shadowOpacity: 0,
+      elevation: 0,
     },
-    buttonTextPrimary: { color: theme.buttonTextDark },
+    analysisButtonText: {
+      color: theme.buttonTextDark,
+      fontSize: 17, // Larger font
+      fontWeight: "bold",
+      marginLeft: 12,
+    },
     statusContainer: {
       width: "90%",
-      maxWidth: 400,
-      marginTop: 25,
-      padding: 15,
+      maxWidth: 450,
+      marginTop: 30, // More space above status
+      paddingVertical: 20,
+      paddingHorizontal: 15,
       borderRadius: 12,
       backgroundColor: theme.card,
       alignItems: "center",
+      borderWidth: 1,
+      borderColor: theme.border,
     },
     statusText: {
       color: theme.textSecondary,
-      marginTop: 10,
+      marginTop: 12,
       textAlign: "center",
       fontSize: 15,
     },
     errorText: {
       color: theme.error,
-      marginTop: 10,
+      marginTop: 12,
       textAlign: "center",
       fontSize: 15,
       fontWeight: "500",
+      lineHeight: 21,
+    },
+    retryButtonText: {
+      color: theme.primary,
+      fontWeight: "600",
+      fontSize: 15,
+      padding: 5, // Add padding for easier tap target
     },
   });
 
-  // --- Button State ---
-  const canPredict = imageSource && model && !loadingModel && !modelError;
+  // --- Derived State ---
+  // Determine if the main analysis button should be enabled
+  const canPredict =
+    imageSource && !modelStatus.loading && !modelStatus.error && !isPredicting;
 
   // --- Render ---
   return (
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.scrollContainer}
-      keyboardShouldPersistTaps="handled"
+      keyboardShouldPersistTaps="handled" // Helps with taps on buttons while keyboard might be involved
+      showsVerticalScrollIndicator={false}
     >
       {/* Image Display/Placeholder */}
-      <TouchableOpacity
-        style={styles.imageContainer}
-        onPress={handleChooseFromLibrary}
-        disabled={isPredicting}
-        activeOpacity={0.7}
-      >
+      <View style={styles.imageContainer}>
         {imageSource ? (
-          <Image source={imageSource} style={styles.image} resizeMode="cover" />
+          <>
+            <Image
+              source={imageSource}
+              style={styles.image}
+              resizeMode="cover"
+            />
+            {/* Clear Image Button */}
+            <TouchableOpacity
+              style={styles.clearImageButton}
+              onPress={() => setImageSource(null)} // Clear the image state
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} // Increase tappable area
+            >
+              <Feather name="x" size={18} color={theme.text} />
+            </TouchableOpacity>
+          </>
         ) : (
-          <View style={styles.imagePlaceholderContent}>
+          // Placeholder prompts user action
+          <TouchableOpacity
+            style={styles.imagePlaceholderContent}
+            onPress={() => handlePickImage(false)} // Default to gallery on placeholder tap
+            activeOpacity={0.7}
+          >
             <Ionicons
               name="image-outline"
-              size={80}
+              size={100} // Larger icon
               color={theme.placeholderIcon}
             />
             <Text style={styles.imagePlaceholderText}>
-              {t("img_capture_tap_select")}
+              {t("img_capture_tap_select_gallery")} {/* More specific text */}
             </Text>
-          </View>
+          </TouchableOpacity>
         )}
-      </TouchableOpacity>
-
-      {/* Tips Section */}
-      <View style={styles.tipsContainer}>
-        <Text style={styles.tipsHeader}>Tips for Good Scans</Text>
-        <Text style={styles.tipsText}>
-          Use good light. Focus on leaves/stems. Avoid blur.
-        </Text>
       </View>
 
-      {/* Action Buttons */}
+      {/* Action Buttons: Camera / Gallery */}
       <View style={styles.buttonRow}>
+        {/* Choose from Library Button */}
+        <TouchableOpacity
+          style={styles.choiceButton}
+          onPress={() => handlePickImage(false)} // False for library
+          disabled={isPredicting} // Disable while predicting
+        >
+          <Ionicons
+            name="images-outline"
+            size={20}
+            color={theme.buttonSecondaryText}
+          />
+          <Text style={styles.choiceButtonText}>
+            {t("img_capture_choose_library")}
+          </Text>
+        </TouchableOpacity>
+
         {/* Take Photo Button */}
         <TouchableOpacity
-          style={[styles.button, { borderColor: theme.textSecondary }]}
-          onPress={handleCaptureImage}
+          style={styles.choiceButton}
+          onPress={() => handlePickImage(true)} // True for camera
           disabled={isPredicting}
         >
           <Ionicons
             name="camera-outline"
-            size={22}
-            color={theme.textSecondary}
+            size={20}
+            color={theme.buttonSecondaryText}
           />
-          <Text style={[styles.buttonText, { color: theme.textSecondary }]}>
+          <Text style={styles.choiceButtonText}>
             {t("img_capture_take_photo")}
           </Text>
         </TouchableOpacity>
+      </View>
 
-        {/* Start Analysis Button */}
+      {/* Analysis Button Container */}
+      <View style={styles.analysisButtonContainer}>
+        {/* Start Analysis Button - Primary Action */}
         <TouchableOpacity
           style={[
-            styles.button,
-            styles.buttonPrimary,
-            (!canPredict || isPredicting) && styles.buttonDisabled,
+            styles.analysisButton,
+            !canPredict && styles.analysisButtonDisabled, // Apply disabled style
           ]}
           onPress={handlePredict}
-          disabled={!canPredict || isPredicting}
+          disabled={!canPredict} // Disable onPress if not ready
+          activeOpacity={0.8}
         >
           {isPredicting ? (
             <ActivityIndicator size="small" color={theme.buttonTextDark} />
           ) : (
             <Ionicons
               name="analytics-outline"
-              size={22}
+              size={24}
               color={theme.buttonTextDark}
             />
           )}
-          <Text style={[styles.buttonText, styles.buttonTextPrimary]}>
+          <Text style={styles.analysisButtonText}>
             {isPredicting
               ? t("img_capture_analyzing")
               : t("img_capture_start_analysis")}
@@ -437,34 +556,37 @@ const ImageCaptureScreen = () => {
         </TouchableOpacity>
       </View>
 
-      {/* Model Status */}
-      {(loadingModel || modelError) && (
+      {/* Model Status Display */}
+      {(modelStatus.loading || modelStatus.error) && (
         <View style={styles.statusContainer}>
-          {loadingModel && (
+          {modelStatus.loading && (
             <>
-              {" "}
-              <ActivityIndicator size="large" color={theme.primary} />{" "}
+              <ActivityIndicator size="small" color={theme.primary} />
               <Text style={styles.statusText}>
                 {t("img_capture_loading_model")}
-              </Text>{" "}
+              </Text>
             </>
           )}
-          {modelError && (
-            <>
-              {" "}
-              <Ionicons
-                name="warning-outline"
-                size={30}
-                color={theme.error}
-              />{" "}
-              <Text style={styles.errorText}>{modelError}</Text>{" "}
-              <TouchableOpacity onPress={loadModel} style={{ marginTop: 10 }}>
-                <Text style={{ color: theme.primary, fontWeight: "600" }}>
-                  {t("retry")}
+          {modelStatus.error &&
+            !modelStatus.loading && ( // Show error only if not also loading
+              <>
+                <Ionicons
+                  name="warning-outline"
+                  size={24}
+                  color={theme.error}
+                />
+                <Text style={styles.errorText}>
+                  {modelStatus.error.message || t("error_model_load")}
                 </Text>
-              </TouchableOpacity>{" "}
-            </>
-          )}
+                {/* Provide a retry button */}
+                <TouchableOpacity
+                  onPress={handleRetryLoad}
+                  style={{ marginTop: 15 }}
+                >
+                  <Text style={styles.retryButtonText}>{t("retry")}</Text>
+                </TouchableOpacity>
+              </>
+            )}
         </View>
       )}
     </ScrollView>
