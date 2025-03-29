@@ -1,38 +1,49 @@
-// AppNavigator.js
-import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
-import { createStackNavigator } from '@react-navigation/stack';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { useAuth } from '../context/AuthContext';
+// src/navigation/AppNavigator.js
+import React from "react";
+import { NavigationContainer } from "@react-navigation/native";
+import {
+  createStackNavigator,
+  CardStyleInterpolators,
+} from "@react-navigation/stack";
+import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import { useAuth } from "../context/AuthContext";
+import { t } from "../localization/strings";
 
 // Import Screens
-import SignUpScreen from '../screens/SignUpScreen';
-import LoginScreen from '../screens/LoginScreen';
-import ProfileScreen from '../screens/ProfileScreen';
-import ImageCaptureScreen from '../screens/ImageCaptureScreen';
-import HomeScreen from '../screens/HomeScreen';
-import ChatListScreen from '../screens/ChatListScreen'; // <-- IMPORT NEW LIST SCREEN
-import ChatScreen from '../screens/ChatScreen';       // <-- IMPORT NEW CHAT SCREEN
-import SettingsScreen from '../screens/SettingsScreen';
-import CustomTabBar from '../components/CustomTabBar';
-import ScanResultsScreen from '../screens/ScanResultsScreen';
-// import RecentActivityDetail from '../screens/RecentActivityDetail';
+import SignUpScreen from "../screens/SignUpScreen";
+import LoginScreen from "../screens/LoginScreen";
+import ProfileScreen from "../screens/ProfileScreen";
+import ImageCaptureScreen from "../screens/ImageCaptureScreen";
+import HomeScreen from "../screens/HomeScreen";
+import ChatListScreen from "../screens/ChatListScreen";
+import ChatScreen from "../screens/ChatScreen";
+import SettingsScreen from "../screens/SettingsScreen"; // Keep import if reachable from Profile
+import AnalyticsScreen from "../screens/AnalyticsScreen"; // Import new Analytics screen
+import CustomTabBar from "../components/CustomTabBar";
+import ScanResultsScreen from "../screens/ScanResultsScreen";
+import SelectScanScreen from "../screens/selectScanScreen";
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
-// --- Tab Navigator ---
+// --- Consistent Header Styles ---
+const commonHeaderStyle = { backgroundColor: "#101010" };
+const commonHeaderTintColor = "#EFEFEF";
+const commonHeaderTitleStyle = { fontWeight: "600" };
+
+// --- Tab Navigator --- (Updated tabs)
 const MainTabNavigator = () => {
   return (
     <Tab.Navigator
-      screenOptions={{ headerShown: false }} // Keep headers false for tabs
       tabBar={(props) => <CustomTabBar {...props} />}
+      screenOptions={{ headerShown: false }}
     >
       <Tab.Screen name="Home" component={HomeScreen} />
-      {/* Use ChatListScreen for the tab */}
       <Tab.Screen name="Chats" component={ChatListScreen} />
-      <Tab.Screen name="Settings" component={SettingsScreen} />
+      {/* Use AnalyticsScreen for the tab */}
+      <Tab.Screen name="Analytics" component={AnalyticsScreen} />
       <Tab.Screen name="Profile" component={ProfileScreen} />
+      {/* Settings removed */}
     </Tab.Navigator>
   );
 };
@@ -40,38 +51,71 @@ const MainTabNavigator = () => {
 // --- Main Stack Navigator ---
 const AppNavigator = () => {
   const { user } = useAuth();
-  console.log('AppNavigator - User state:', user ? user.uid : 'No user');
 
   return (
     <NavigationContainer>
-      {/* Stack Navigator now wraps everything */}
       <Stack.Navigator
-         initialRouteName={user ? 'Main' : 'Login'}
-         // Default header styles can be set here if desired
-         // screenOptions={{ headerStyle: { backgroundColor: '#101010'}, headerTintColor: '#fff' }}
+        screenOptions={{
+          // Default options
+          headerStyle: commonHeaderStyle,
+          headerTintColor: commonHeaderTintColor,
+          headerTitleStyle: commonHeaderTitleStyle,
+          headerBackTitleVisible: false,
+          cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS,
+        }}
       >
-        {/* Screens outside the main tab flow */}
-        <Stack.Screen name="SignUp" component={SignUpScreen} options={{ headerShown: false }}/>
-        <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }}/>
+        {!user ? (
+          // Auth Screens Group
+          <Stack.Group screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="Login" component={LoginScreen} />
+            <Stack.Screen name="SignUp" component={SignUpScreen} />
+          </Stack.Group>
+        ) : (
+          // Main App Screens Group
+          <Stack.Group>
+            <Stack.Screen
+              name="Main"
+              component={MainTabNavigator}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="ImageCaptureScreen"
+              component={ImageCaptureScreen}
+              options={{ title: t("home_scan_button") }}
+            />
+            <Stack.Screen
+              name="ScanResults"
+              component={ScanResultsScreen}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="ChatScreen"
+              component={ChatScreen}
+              options={{ title: t("chat_new_chat") }}
+            />
+            {/* Settings screen is now pushed from Profile, not a tab */}
+            <Stack.Screen
+              name="Settings"
+              component={SettingsScreen}
+              options={{ title: t("settings") }}
+            />
 
-        {/* The Main Tab Navigator is now just one screen within the Stack */}
-        <Stack.Screen name="Main" component={MainTabNavigator} options={{ headerShown: false }}/>
-
-        {/* Screens that can be pushed ON TOP of the tabs */}
-        <Stack.Screen name="ImageCaptureScreen" component={ImageCaptureScreen}
-             // Example: Give Image Capture a header
-             options={{ title: 'Scan Plant', headerStyle: {backgroundColor: '#000'}, headerTintColor: '#FFF' }}/>
-        <Stack.Screen name="ScanResults" component={ScanResultsScreen} options={{ headerShown: false }}/>
-
-        {/* Add ChatScreen to the main stack */}
-        <Stack.Screen
-           name="ChatScreen"
-           component={ChatScreen}
-           // Header title is set dynamically within ChatScreen using navigation.setOptions
-           // You can define fallback/default options here if needed
-            options={{ title: 'Chat' /* Default title */ }}
-         />
-
+            {/* Modal Group */}
+            <Stack.Group
+              screenOptions={{
+                presentation: "modal",
+                headerShown: false,
+                cardStyleInterpolator: CardStyleInterpolators.forVerticalIOS,
+              }}
+            >
+              <Stack.Screen
+                name="SelectScanScreen"
+                component={SelectScanScreen}
+              />
+              {/* Add EditProfileScreen etc. here when created */}
+            </Stack.Group>
+          </Stack.Group>
+        )}
       </Stack.Navigator>
     </NavigationContainer>
   );

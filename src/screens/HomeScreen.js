@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from "react"; // Added useCallback
+// src/screens/HomeScreen.js
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -9,64 +10,86 @@ import {
   RefreshControl,
   ScrollView,
   Dimensions,
-  Platform, // Import Platform
-  Alert, // Import Alert
+  Platform,
+  Alert, // Keep Alert for potential critical errors if needed
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useNavigation, useFocusEffect } from "@react-navigation/native"; // Added useFocusEffect
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import firebase from "firebase/compat/app";
 import "firebase/compat/firestore";
 import { useAuth } from "../context/AuthContext"; // Ensure path is correct
-import { formatDistanceToNowStrict } from "date-fns"; // Using date-fns for robust time formatting
+import { formatDistanceToNowStrict } from "date-fns";
+import { t } from "../localization/strings"; // Ensure path is correct
 
 const screenWidth = Dimensions.get("window").width;
 
 // --- Helper: Time Formatting ---
 const formatTimestamp = (timestamp) => {
-  if (!timestamp || typeof timestamp.toDate !== "function") {
-    return "Recently"; // Fallback if timestamp is invalid
+  // Check if it's a Firestore Timestamp object
+  if (timestamp && typeof timestamp.toDate === "function") {
+    try {
+      const date = timestamp.toDate();
+      return formatDistanceToNowStrict(date, { addSuffix: true });
+    } catch (error) {
+      console.error("Error formatting Firestore timestamp:", error);
+      return t("Recently") || "Recently";
+    }
   }
-  try {
-    const date = timestamp.toDate();
-    // Using date-fns for better relative time strings
-    return formatDistanceToNowStrict(date, { addSuffix: true });
-  } catch (error) {
-    console.error("Error formatting timestamp:", error);
-    return "Recently";
+  // Handle if it's already a JS Date object
+  else if (timestamp instanceof Date) {
+    try {
+      return formatDistanceToNowStrict(timestamp, { addSuffix: true });
+    } catch (error) {
+      console.error("Error formatting Date object:", error);
+      return t("Recently") || "Recently";
+    }
+  }
+  // Fallback for null, undefined, or other types
+  else {
+    console.warn("Invalid timestamp type received:", typeof timestamp);
+    return t("Recently") || "Recently";
   }
 };
 
-// --- Component: Recent Activity Item ---
-// Use React.memo for potential performance optimization if list gets very long
-// or item rendering becomes complex.
+// --- Component: Recent Activity Item (Using React.memo) ---
 const RecentActivityItem = React.memo(({ item, onPress }) => {
-  // Basic check for item validity
   if (!item || !item.id) return null;
+
+  // Consistent theme colors for item
+  const theme = {
+    itemBg: "#222222",
+    iconBg: "rgba(191, 255, 0, 0.1)",
+    iconColor: "#BFFF00",
+    textPrimary: "#EFEFEF",
+    textSecondary: "#999999",
+  };
 
   return (
     <TouchableOpacity
-      style={styles.activityPostContainer}
+      style={[styles.activityPostContainer, { backgroundColor: theme.itemBg }]}
       onPress={onPress}
       activeOpacity={0.7}
     >
-      <View style={styles.activityIconContainer}>
-        <Ionicons name="leaf-outline" size={26} color="#BFFF00" />{" "}
-        {/* Outline variant */}
+      <View
+        style={[
+          styles.activityIconContainer,
+          { backgroundColor: theme.iconBg },
+        ]}
+      >
+        <Ionicons name="leaf-outline" size={26} color={theme.iconColor} />
       </View>
       <View style={styles.activityPostDetails}>
         <Text
-          style={styles.activityPostLabel}
+          style={[styles.activityPostLabel, { color: theme.textPrimary }]}
           numberOfLines={1}
           ellipsizeMode="tail"
         >
-          {item.bestLabel || "Scan Result"}
+          {item.bestLabel || t("scan_results_title") || "Scan Result"}
         </Text>
-        <Text style={styles.activityPostTime}>
+        <Text style={[styles.activityPostTime, { color: theme.textSecondary }]}>
           {formatTimestamp(item.timestamp)}
         </Text>
       </View>
-      {/* Optional: chevron only if interaction expected, removed for cleaner look */}
-      {/* <Ionicons name="chevron-forward" size={20} color="#666" /> */}
     </TouchableOpacity>
   );
 });
@@ -76,217 +99,267 @@ const HomeScreen = () => {
   const navigation = useNavigation();
   const { user } = useAuth();
   const [recentActivities, setRecentActivities] = useState([]);
-  const [isLoading, setIsLoading] = useState(true); // Tracks initial load
-  const [isRefreshing, setIsRefreshing] = useState(false); // Tracks pull-to-refresh
-  const [error, setError] = useState(null); // Tracks fetch errors
+  const [isLoading, setIsLoading] = useState(true); // Tracks initial load OR load after user change
+  const [isRefreshing, setIsRefreshing] = useState(false); // Tracks pull-to-refresh OR focus-refresh
+  const [error, setError] = useState(null);
+
+  // Theme (consistent dark theme)
+  const theme = {
+    background: "#0A0A0A",
+    text: "#EFEFEF",
+    textSecondary: "#AEAEB2",
+    primary: "#BFFF00",
+    card: "#1C1C1E",
+    error: "#FF9A9A",
+    refreshControlBg: "#2C2C2E",
+    buttonTextDark: "#111111",
+    placeholderIcon: "#888",
+    retryButtonBackground: "#333",
+  };
 
   // --- Data Fetching Logic ---
   const fetchRecentActivities = useCallback(
     async (isManualRefresh = false) => {
-      if (!user) {
-        // console.log("HomeScreen: No user logged in.");
+      if (!user?.uid) {
         setRecentActivities([]);
         setIsLoading(false);
         setIsRefreshing(false);
-        setError(null); // Clear error on logout
+        setError(null);
         return;
       }
 
-      // Set appropriate loading state
-      if (!isManualRefresh && !recentActivities.length) {
-        // Only show full loader initially
-        setIsLoading(true);
-      } else if (isManualRefresh) {
-        setIsRefreshing(true);
+      // Prevent concurrent fetches unless forced by manual pull-down
+      if (!isManualRefresh && (isLoading || isRefreshing)) {
+        console.log("HomeScreen: Fetch skipped, already in progress.");
+        return;
       }
-      setError(null); // Clear previous errors on new fetch attempt
 
-      // console.log(`HomeScreen: Fetching activities for user ${user.uid}`);
+      // Set appropriate loading/refreshing state
+      if (isManualRefresh) {
+        setIsRefreshing(true);
+      } else {
+        // On focus/initial: Show full loader only if list is empty
+        if (recentActivities.length === 0) setIsLoading(true);
+        // Optional: else setIsRefreshing(true); // show spinner on focus too
+      }
+      setError(null); // Clear previous errors
+
+      console.log(
+        `HomeScreen: Fetching activities (Manual: ${isManualRefresh})`
+      );
       try {
-        const snapshot = await firebase
+        const queryRef = firebase
           .firestore()
           .collection("recent_activity")
           .where("userId", "==", user.uid)
           .orderBy("timestamp", "desc")
-          .limit(15) // Fetch slightly more items
-          .get();
+          .limit(15); // Fetch recent items
+        const snapshot = await queryRef.get();
 
-        if (snapshot.empty && recentActivities.length === 0) {
-          console.log("HomeScreen: No activities found for user.");
-          setRecentActivities([]); // Ensure empty state if no docs
-        } else {
-          const activities = snapshot.docs.map((doc) => ({
+        // Process snapshot and update state consistently
+        const activities = snapshot.docs.map((doc) => {
+          const data = doc.data();
+          // Ensure timestamp is a valid Firestore Timestamp or null
+          return {
             id: doc.id,
-            ...doc.data(),
-            // Timestamp validation included in map
+            ...data,
             timestamp:
-              doc.data().timestamp &&
-              typeof doc.data().timestamp.toDate === "function"
-                ? doc.data().timestamp
+              data.timestamp instanceof firebase.firestore.Timestamp
+                ? data.timestamp
                 : null,
-          }));
-          // console.log(`HomeScreen: Fetched ${activities.length} activities.`);
-          setRecentActivities(activities); // Update state
+          };
+        });
+        setRecentActivities(activities); // Update state even if empty
+        if (snapshot.empty) {
+          console.log("HomeScreen: No activities found.");
         }
       } catch (err) {
-        console.error("HomeScreen: Error fetching recent activities:", err);
-        // Set user-friendly error message
-        if (err.code === "permission-denied") {
-          setError(
-            "Oops! We couldn't access your activity. Please check your connection or try again later."
-          );
-        } else {
-          setError(
-            "Hmm, something went wrong while loading your scans. Pull down to refresh."
+        console.error("HomeScreen: Error fetching activities:", err);
+        let userFriendlyError = t("error_loading_data");
+        if (err.code === "permission-denied")
+          userFriendlyError = t("error_permission_denied") + " Check rules.";
+        else if (err.code === "unauthenticated")
+          userFriendlyError = t("login_prompt");
+        else if (err.message?.toLowerCase().includes("network error"))
+          userFriendlyError = t("error_network");
+        else if (err.code === "failed-precondition") {
+          userFriendlyError = t("error_loading_data") + " (DB Index missing?)";
+          console.warn(
+            "Firestore Index likely missing for query: recent_activity / (userId ==, timestamp DESC)"
           );
         }
-        // Optionally show an Alert for critical errors
-        // Alert.alert("Load Failed", "Could not fetch recent scans. Please ensure you are connected to the internet.");
+        setError(userFriendlyError);
       } finally {
-        // Always turn off loading indicators
+        // Always reset both loading indicators
         setIsLoading(false);
         setIsRefreshing(false);
       }
     },
-    [user, recentActivities.length]
-  ); // Include recentActivities.length to adjust initial loading logic
+    [user?.uid, isLoading, isRefreshing]
+  ); // Include loading states in dependencies to prevent overlap
 
   // --- Effect for Focus & User Change ---
-  // useFocusEffect is often better for focus-related data fetching than addListener
   useFocusEffect(
     useCallback(() => {
-      // console.log("HomeScreen focused, fetching activities if user exists...");
+      console.log("HomeScreen Focused.");
       if (user) {
-        // Fetch data, but don't treat it as a manual refresh unless triggered by pull-down
-        // We don't necessarily want the refresh indicator spinning every time the screen focuses.
+        // Trigger fetch, internal checks prevent overlap
         fetchRecentActivities(false);
       } else {
-        // Clear state if user logs out while screen might be cached
+        // Clear state if no user
         setRecentActivities([]);
         setIsLoading(false);
+        setIsRefreshing(false);
         setError(null);
       }
-
-      // No specific cleanup needed here unless subscribing to something else
-      return () => {
-        // console.log("HomeScreen unfocused");
-      };
-    }, [user, fetchRecentActivities]) // Depend on user and the fetch function itself
+      return () => {}; // No cleanup needed
+    }, [user, fetchRecentActivities]) // Depend on user and the memoized fetch function
   );
 
   // --- Pull-to-Refresh Handler ---
-  const onRefresh = () => {
-    // console.log("HomeScreen: Pull-to-refresh triggered.");
-    fetchRecentActivities(true); // Call fetch with manual refresh flag
-  };
+  const onRefresh = useCallback(() => {
+    fetchRecentActivities(true);
+  }, [fetchRecentActivities]);
 
   // --- Navigation ---
   const navigateToScanResults = useCallback(
     (item) => {
-      // Pass only necessary data, especially if item contains large fields
-      navigation.navigate("ScanResults", {
+      // Pass necessary data, ensure timestamp is handled correctly by target screen or stringified
+      const params = {
         scanId: item.id,
-        // Pass other fields needed by ScanResults screen
         imageUri: item.imageUri,
         bestLabel: item.bestLabel,
         bestConfidence: item.bestConfidence,
         top5: item.top5,
-        timestamp: item.timestamp, // Make sure timestamp is serializable if needed, or refetch in ScanResults using ID
         description: item.description,
-      });
+        // Pass timestamp as Firestore Timestamp object if ScanResultsScreen handles it,
+        // otherwise convert to milliseconds or ISO string
+        timestamp: item.timestamp, // Assuming ScanResults can handle the object via route.params.timestamp.toDate()
+      };
+      navigation.navigate("ScanResults", params);
     },
     [navigation]
   );
-
   const navigateToImageCapture = useCallback(() => {
-    navigation.navigate("ImageCaptureScreen"); // Ensure name matches your route
+    navigation.navigate("ImageCaptureScreen");
   }, [navigation]);
 
   // --- Render Logic ---
-
   const renderHeader = () => (
     <>
-      {/* Replaced title with a more subtle header potentially */}
-      {/* <Text style={styles.title}>Dr. Plant</Text> */}
-      <View style={styles.headerContainer}>
-        <Text style={styles.subtitle}>Hello,</Text>
-        <Text style={styles.username} numberOfLines={1} ellipsizeMode="tail">
+      <View
+        style={[styles.headerContainer, { backgroundColor: theme.background }]}
+      >
+        <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
+          {t("home_hello")}
+        </Text>
+        <Text
+          style={[styles.username, { color: theme.text }]}
+          numberOfLines={1}
+          ellipsizeMode="tail"
+        >
           {user?.displayName?.split(" ")[0] ||
             user?.email?.split("@")[0] ||
-            "Gardener"}
+            t("home_gardener")}
         </Text>
-        {/* Maybe add an icon button here later? */}
       </View>
-
-      {/* Discover Plants Section */}
-      <View style={styles.card}>
+      <View style={[styles.card, { backgroundColor: theme.card }]}>
         <View style={styles.cardHeader}>
           <Ionicons
             name="leaf-outline"
             size={22}
-            color="#DFFF00"
+            color={theme.primary}
             style={styles.cardIcon}
           />
-          <Text style={styles.cardTitle}>Discover Plants</Text>
+          <Text style={[styles.cardTitle, { color: theme.text }]}>
+            {t("home_discover_plants")}
+          </Text>
         </View>
-        <Text style={styles.cardText}>
-          Scan your plants to identify potential issues and receive care
-          guidance.
+        <Text style={[styles.cardText, { color: theme.textSecondary }]}>
+          {t("home_discover_text")}
         </Text>
         <TouchableOpacity
-          style={styles.scanButton}
+          style={[styles.scanButton, { backgroundColor: theme.primary }]}
           onPress={navigateToImageCapture}
           activeOpacity={0.8}
         >
-          <Ionicons name="scan-outline" size={20} color="#111" />
-          <Text style={styles.scanButtonText}>Scan Plant Now</Text>
+          <Ionicons
+            name="scan-outline"
+            size={20}
+            color={theme.buttonTextDark}
+          />
+          <Text
+            style={[styles.scanButtonText, { color: theme.buttonTextDark }]}
+          >
+            {t("home_scan_button")}
+          </Text>
         </TouchableOpacity>
       </View>
-
-      {/* Recent Activity Title */}
-      <Text style={styles.sectionTitle}>Recent Scans</Text>
+      <Text style={[styles.sectionTitle, { color: theme.text }]}>
+        {t("home_recent_scans")}
+      </Text>
     </>
   );
 
   const renderContent = () => {
-    // 1. Initial Loading State
+    // Show initial loading indicator first
     if (isLoading) {
       return (
         <View style={styles.centeredMessageContainer}>
-          <ActivityIndicator size="large" color="#DFFF00" />
-          <Text style={styles.loadingText}>Loading your garden data...</Text>
-        </View>
-      );
-    }
-
-    // 2. Error State
-    if (error && !isRefreshing) {
-      // Don't show full error during refresh attempt
-      return (
-        <View style={styles.centeredMessageContainer}>
-          <Ionicons name="cloud-offline-outline" size={50} color="#888" />
-          <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity onPress={onRefresh} style={styles.retryButton}>
-            <Text style={styles.retryButtonText}>Try Again</Text>
-          </TouchableOpacity>
-        </View>
-      );
-    }
-
-    // 3. Empty State (No Activities)
-    if (recentActivities.length === 0) {
-      return (
-        <View style={styles.centeredMessageContainer}>
-          <Ionicons name="images-outline" size={50} color="#888" />
-          <Text style={styles.noActivityText}>No recent scans found.</Text>
-          <Text style={styles.noActivitySubText}>
-            Start by scanning a plant!
+          <ActivityIndicator size="large" color={theme.primary} />
+          <Text style={[styles.loadingText, { color: theme.textSecondary }]}>
+            {t("home_loading_data")}
           </Text>
         </View>
       );
     }
-
-    // 4. Success State (Show Activities)
+    // Then show error if it exists (and not refreshing)
+    if (error) {
+      return (
+        <View style={styles.centeredMessageContainer}>
+          <Ionicons
+            name="cloud-offline-outline"
+            size={50}
+            color={theme.placeholderIcon}
+          />
+          <Text style={[styles.errorText, { color: theme.error }]}>
+            {error}
+          </Text>
+          <TouchableOpacity
+            onPress={onRefresh}
+            style={[
+              styles.retryButton,
+              { backgroundColor: theme.retryButtonBackground },
+            ]}
+          >
+            <Text style={[styles.retryButtonText, { color: theme.text }]}>
+              {t("retry")}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+    // Then show empty state if no error and list is empty
+    if (recentActivities.length === 0) {
+      return (
+        <View style={styles.centeredMessageContainer}>
+          <Ionicons
+            name="images-outline"
+            size={50}
+            color={theme.placeholderIcon}
+          />
+          <Text style={[styles.noActivityText, { color: theme.text }]}>
+            {t("home_no_scans")}
+          </Text>
+          <Text
+            style={[styles.noActivitySubText, { color: theme.textSecondary }]}
+          >
+            {t("home_no_scans_subtext")}
+          </Text>
+        </View>
+      );
+    }
+    // Otherwise, render the list
     return (
       <FlatList
         data={recentActivities}
@@ -300,193 +373,116 @@ const HomeScreen = () => {
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.activityListContainer}
+        initialNumToRender={5} // Performance tuning
+        maxToRenderPerBatch={5}
+        windowSize={11}
       />
     );
   };
 
+  // --- Main Component Return ---
   return (
-    // Use ScrollView to allow pulling down the entire content including the header
+    // Use ScrollView primarily for the Pull-to-Refresh functionality
     <ScrollView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: theme.background }]}
       contentContainerStyle={styles.scrollContentContainer}
       showsVerticalScrollIndicator={false}
       refreshControl={
         <RefreshControl
-          refreshing={isRefreshing}
-          onRefresh={onRefresh}
-          colors={["#BFFF00"]} // Spinner color for Android
-          tintColor={"#BFFF00"} // Spinner color for iOS
-          progressBackgroundColor={"#2C2C2E"}
+          refreshing={isRefreshing} // Controlled by isRefreshing state
+          onRefresh={onRefresh} // Triggers manual fetch
+          colors={[theme.primary]} // Android spinner color
+          tintColor={theme.primary} // iOS spinner color
+          progressBackgroundColor={theme.refreshControlBg}
         />
       }
     >
       {renderHeader()}
+      {/* Render content based on state */}
       {renderContent()}
     </ScrollView>
   );
 };
 
-// --- Styles --- (Refined for a more professional look)
+// --- Styles --- (Keep refined styles)
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#0A0A0A", // Slightly off-black
-  },
+  container: { flex: 1 },
   scrollContentContainer: {
-    paddingTop: Platform.OS === "ios" ? 60 : 30, // Adjust for status bar
+    paddingTop: Platform.OS === "ios" ? 20 : 15,
     paddingHorizontal: 18,
-    paddingBottom: 90, // Space above bottom tab bar
-    flexGrow: 1, // Ensures ScrollView content can fill space if short
+    paddingBottom: 90,
+    flexGrow: 1,
   },
-  // --- Header ---
   headerContainer: {
     marginBottom: 25,
+    paddingTop: Platform.OS === "ios" ? 40 : 15,
   },
-  subtitle: {
-    fontSize: 18, // Was 18
-    color: "#AEAEB2", // Lighter grey
-    fontWeight: "500",
-  },
-  username: {
-    fontSize: 26, // Increased size
-    fontWeight: "bold",
-    color: "#EFEFEF", // Near white, less harsh than pure white
-    marginTop: 2,
-  },
-  // --- Loading, Error, Empty States ---
+  subtitle: { fontSize: 18, fontWeight: "500" },
+  username: { fontSize: 26, fontWeight: "bold", marginTop: 2 },
   centeredMessageContainer: {
-    flexGrow: 1, // Takes available space in ScrollView
+    flexGrow: 1,
     justifyContent: "center",
     alignItems: "center",
-    paddingVertical: 50, // Add vertical padding
+    paddingVertical: 50,
     paddingHorizontal: 20,
+    minHeight: 200,
   },
-  loadingText: {
-    marginTop: 15,
-    fontSize: 15,
-    color: "#AEAEB2",
-  },
+  loadingText: { marginTop: 15, fontSize: 15 },
   errorText: {
     marginTop: 15,
     fontSize: 16,
-    color: "#FF9A9A", // Lighter red for error text
     textAlign: "center",
     lineHeight: 22,
     marginBottom: 20,
   },
   retryButton: {
-    backgroundColor: "#333",
     paddingVertical: 10,
     paddingHorizontal: 25,
     borderRadius: 20,
+    marginTop: 10,
   },
-  retryButtonText: {
-    color: "#EFEFEF",
-    fontWeight: "600",
-    fontSize: 15,
-  },
-  noActivityText: {
-    marginTop: 15,
-    fontSize: 17,
-    fontWeight: "600",
-    color: "#E0E0E0",
-  },
-  noActivitySubText: {
-    marginTop: 5,
-    fontSize: 14,
-    color: "#AEAEB2",
-  },
-  // --- Scan Card ---
-  card: {
-    backgroundColor: "#1C1C1E",
-    padding: 20, // Increased padding
-    borderRadius: 16, // More rounded
-    marginBottom: 30,
-  },
-  cardHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 10,
-  },
-  cardIcon: {
-    marginRight: 10,
-  },
-  cardTitle: {
-    fontSize: 19, // Slightly larger
-    fontWeight: "bold", // Bold
-    color: "#FFFFFF",
-  },
-  cardText: {
-    fontSize: 15,
-    color: "#C7C7CC", // Slightly lighter grey
-    marginBottom: 20, // More space before button
-    lineHeight: 21,
-  },
+  retryButtonText: { fontWeight: "600", fontSize: 15 },
+  noActivityText: { marginTop: 15, fontSize: 17, fontWeight: "600" },
+  noActivitySubText: { marginTop: 5, fontSize: 14 },
+  card: { padding: 20, borderRadius: 16, marginBottom: 30 },
+  cardHeader: { flexDirection: "row", alignItems: "center", marginBottom: 10 },
+  cardIcon: { marginRight: 10 },
+  cardTitle: { fontSize: 19, fontWeight: "bold" },
+  cardText: { fontSize: 15, marginBottom: 20, lineHeight: 21 },
   scanButton: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#BFFF00", // Theme accent
-    paddingVertical: 14, // Taller button
+    paddingVertical: 14,
     paddingHorizontal: 25,
-    borderRadius: 12, // More rounded button
+    borderRadius: 12,
     justifyContent: "center",
-    alignSelf: "stretch", // Make button full width of card padding
-    // Shadow for elevation
+    alignSelf: "stretch",
     shadowColor: "#BFFF00",
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.3,
     shadowRadius: 5,
     elevation: 6,
   },
-  scanButtonText: {
-    marginLeft: 10,
-    fontSize: 16,
-    fontWeight: "bold",
-    color: "#111111", // Dark text on light button
-  },
-  // --- Recent Scans Section ---
-  sectionTitle: {
-    fontSize: 21, // Larger
-    fontWeight: "bold",
-    color: "#FFFFFF",
-    marginBottom: 15,
-  },
+  scanButtonText: { marginLeft: 10, fontSize: 16, fontWeight: "bold" },
+  sectionTitle: { fontSize: 21, fontWeight: "bold", marginBottom: 15 },
   activityListContainer: {
-    paddingLeft: 2, // Start list near edge
-    paddingRight: 20, // Ensure last item has space on right
-    paddingVertical: 10, // Add vertical padding
+    paddingLeft: 2,
+    paddingRight: 20,
+    paddingVertical: 10,
   },
   activityPostContainer: {
-    backgroundColor: "#222222", // Slightly darker card for items
     borderRadius: 12,
-    width: screenWidth * 0.65, // Wider items
-    // height: 85, // Fixed height can be problematic, let content dictate
+    width: screenWidth * 0.65,
     marginRight: 12,
     flexDirection: "row",
     alignItems: "center",
-    padding: 14, // Good padding
-    overflow: "hidden", // Prevent shadow clipping issues if any
+    padding: 14,
+    overflow: "hidden",
   },
-  activityIconContainer: {
-    backgroundColor: "rgba(191, 255, 0, 0.1)", // Subtle background for icon
-    padding: 10,
-    borderRadius: 25, // Circle
-    marginRight: 12,
-  },
-  activityPostDetails: {
-    flex: 1,
-    justifyContent: "center",
-  },
-  activityPostLabel: {
-    color: "#EFEFEF",
-    fontSize: 15,
-    fontWeight: "600",
-    marginBottom: 3,
-  },
-  activityPostTime: {
-    color: "#999999", // Darker grey for timestamp
-    fontSize: 12,
-  },
+  activityIconContainer: { padding: 10, borderRadius: 25, marginRight: 12 },
+  activityPostDetails: { flex: 1, justifyContent: "center" },
+  activityPostLabel: { fontSize: 15, fontWeight: "600", marginBottom: 3 },
+  activityPostTime: { fontSize: 12 },
 });
 
 export default HomeScreen;

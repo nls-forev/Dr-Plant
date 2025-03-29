@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from "react";
+// src/screens/ChatListScreen.js
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -7,9 +8,11 @@ import {
   FlatList,
   ActivityIndicator,
   Alert,
+  Platform,
+  SafeAreaView,
 } from "react-native";
 import { useAuth } from "../context/AuthContext";
-import { db } from "../firebase/firebaseInit";
+import { db } from "../firebase/firebaseInit"; // Correct path if needed
 import {
   collection,
   query,
@@ -18,20 +21,70 @@ import {
   doc,
   where,
   deleteDoc,
+  writeBatch,
+  getDocs,
+  limit,
+  startAfter, // Import startAfter for batched deletes pagination
 } from "firebase/firestore";
-import { MessageSquarePlus, Trash2 } from "lucide-react-native";
+import { MessageSquarePlus, Trash2, AlertCircle } from "lucide-react-native";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
+import { formatDistanceToNowStrict } from "date-fns"; // Import date-fns
+import { t } from "../localization/strings"; // Import translation
 
 const CHATS_COLLECTION = "ai_chats";
+const MESSAGES_SUBCOLLECTION = "messages";
+
+// --- START: Added formatTimestamp Helper Function ---
+const formatTimestamp = (timestamp) => {
+  if (!timestamp || typeof timestamp.toDate !== "function") {
+    // Use translated fallback 'Recently'
+    return t("Recently") || "Recently";
+  }
+  try {
+    const date = timestamp.toDate();
+    // Use date-fns for relative time. Consider adding locale later.
+    return formatDistanceToNowStrict(date, { addSuffix: true });
+  } catch (error) {
+    console.error("Error formatting timestamp:", error);
+    return t("Recently") || "Recently";
+  }
+};
+// --- END: Added formatTimestamp Helper Function ---
 
 const ChatListScreen = () => {
   const navigation = useNavigation();
   const { user } = useAuth();
   const [chats, setChats] = useState([]);
   const [isLoadingChats, setIsLoadingChats] = useState(true);
+  const [isDeleting, setIsDeleting] = useState(null);
   const [error, setError] = useState(null);
 
-  const getUserChatsCollectionRef = useCallback(() => {
+  const isMounted = useRef(true);
+
+  // Theme colors
+  const theme = {
+    background: "#0A0A0A",
+    headerBackground: "#101010",
+    text: "#EFEFEF",
+    textSecondary: "#AEAEB2",
+    primary: "#BFFF00",
+    card: "#1C1C1E",
+    border: "#2C2C2E",
+    error: "#FF9A9A",
+    deleteIcon: "#AAAAAA",
+    placeholderIcon: "#888",
+    retryButtonBackground: "#333", // Added for retry button
+  };
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+
+  // --- Firestore Query ---
+  const getUserChatsQuery = useCallback(() => {
     if (!user || !db) return null;
     return query(
       collection(db, CHATS_COLLECTION),
@@ -40,27 +93,34 @@ const ChatListScreen = () => {
     );
   }, [user]);
 
+  // --- Fetch Chat List ---
   useFocusEffect(
     useCallback(() => {
       if (!user || !db) {
-        setIsLoadingChats(false);
-        setChats([]); // Clear chats if no user/db
+        if (isMounted.current) {
+          setChats([]);
+          setIsLoadingChats(false);
+        }
         return;
       }
 
       console.log("ChatListScreen: Attaching listener for user:", user.uid);
-      setIsLoadingChats(true);
-      setError(null);
-      const chatsCollectionRef = getUserChatsCollectionRef();
+      if (isMounted.current) {
+        setIsLoadingChats(true);
+        setError(null);
+      }
+      const chatsQuery = getUserChatsQuery();
 
-      if (!chatsCollectionRef) {
-        setError("Failed to prepare chat query.");
-        setIsLoadingChats(false);
+      if (!chatsQuery) {
+        if (isMounted.current) {
+          setError(t("error_general"));
+          setIsLoadingChats(false);
+        }
         return;
       }
 
       const unsubscribe = onSnapshot(
-        chatsCollectionRef,
+        chatsQuery,
         (querySnapshot) => {
           console.log(
             "ChatListScreen: Snapshot received, docs:",
@@ -68,28 +128,39 @@ const ChatListScreen = () => {
           );
           const fetchedChats = [];
           querySnapshot.forEach((doc) => {
-            fetchedChats.push({ id: doc.id, ...doc.data() });
+            const data = doc.data();
+            if (data && data.title && data.updatedAt) {
+              fetchedChats.push({ id: doc.id, ...data });
+            } else {
+              console.warn(
+                "Skipping chat due to missing fields:",
+                doc.id,
+                data
+              );
+            }
           });
-          fetchedChats.sort(
-            (a, b) =>
-              (b.updatedAt?.toDate()?.getTime() || 0) -
-              (a.updatedAt?.toDate()?.getTime() || 0)
-          );
-          setChats(fetchedChats);
-          setIsLoadingChats(false);
+          if (isMounted.current) {
+            setChats(fetchedChats);
+            setIsLoadingChats(false);
+          }
         },
         (err) => {
           console.error("ChatListScreen: Error fetching chat list:", err);
-          let detailedError = "Could not load chats. ";
+          let detailedError = t("chat_load_error");
           if (err.code === "permission-denied") {
-            detailedError += "Check Firestore rules.";
+            detailedError += " " + t("error_permission_denied");
           } else if (err.code === "failed-precondition") {
-            detailedError += "Check Firestore index.";
+            detailedError += " Please check database configuration.";
+            console.warn(
+              "Firestore warning: Missing index likely for chats query (userId ==, updatedAt DESC)"
+            );
           } else {
-            detailedError += `(${err.code || "Unknown"})`;
+            detailedError += ` (${err.code || "Unknown"})`;
           }
-          setError(detailedError);
-          setIsLoadingChats(false);
+          if (isMounted.current) {
+            setError(detailedError);
+            setIsLoadingChats(false);
+          }
         }
       );
 
@@ -97,162 +168,323 @@ const ChatListScreen = () => {
         console.log("ChatListScreen: Unsubscribing from listener");
         unsubscribe();
       };
-    }, [user, db, getUserChatsCollectionRef]) // Add db dependency
+    }, [user, getUserChatsQuery])
   );
 
-  const handleNewChat = () => {
-    // Navigate to ChatScreen without params for a new chat
+  // --- Navigation ---
+  const handleNewChat = useCallback(() => {
     navigation.navigate("ChatScreen");
-  };
+  }, [navigation]);
 
-  const handleSelectChat = (chat) => {
-    // Navigate to ChatScreen with params for an existing chat
-    navigation.navigate("ChatScreen", {
-      chatId: chat.id,
-      initialTitle: chat.title || "Chat",
-    });
-  };
-
-  const handleDeleteChat = (chatIdToDelete) => {
-    if (!chatIdToDelete || !db || !user) return;
-    Alert.alert("Delete Chat", "Delete this chat history permanently?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          console.log("ChatListScreen: Deleting chat:", chatIdToDelete);
-          try {
-            const chatDocRef = doc(db, CHATS_COLLECTION, chatIdToDelete);
-            await deleteDoc(chatDocRef);
-            // UI updates via the snapshot listener removing the item
-          } catch (err) {
-            console.error("ChatListScreen: Error deleting chat:", err);
-            Alert.alert("Error", "Could not delete chat.");
-          }
-        },
-      },
-    ]);
-  };
-
-  const renderChatItem = ({ item }) => (
-    <TouchableOpacity
-      style={styles.chatListItem}
-      onPress={() => handleSelectChat(item)}
-      onLongPress={() => handleDeleteChat(item.id)}
-    >
-      <View style={styles.chatItemContent}>
-        <Text style={styles.chatItemTitle} numberOfLines={1}>
-          {item.title || "Untitled Chat"}
-        </Text>
-        <Text style={styles.chatItemTimestamp}>
-          {item.updatedAt?.toDate()
-            ? item.updatedAt.toDate().toLocaleDateString()
-            : "..."}
-        </Text>
-      </View>
-      <TouchableOpacity
-        onPress={() => handleDeleteChat(item.id)}
-        style={styles.deleteIcon}
-        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-      >
-        <Trash2 size={18} color="#AAAAAA" />
-      </TouchableOpacity>
-    </TouchableOpacity>
+  const handleSelectChat = useCallback(
+    (chat) => {
+      navigation.navigate("ChatScreen", {
+        chatId: chat.id,
+        initialTitle: chat.title || t("chat_new_chat"),
+      });
+    },
+    [navigation]
   );
 
-  // Main Return for Chat List
-  if (!user) {
+  // --- Delete Chat ---
+  const handleDeleteChat = useCallback(
+    async (chatIdToDelete, chatTitle) => {
+      if (!chatIdToDelete || !db || !user || isDeleting) return;
+
+      Alert.alert(
+        t("chat_delete_confirm_title"),
+        `${t("chat_delete_confirm_message")} "${
+          chatTitle || "Untitled Chat"
+        }"?`,
+        [
+          { text: t("cancel"), style: "cancel" },
+          {
+            text: t("delete"),
+            style: "destructive",
+            onPress: async () => {
+              if (isMounted.current) setIsDeleting(chatIdToDelete);
+              console.log("ChatListScreen: Deleting chat:", chatIdToDelete);
+
+              try {
+                // Delete subcollection messages in batches
+                const messagesRef = collection(
+                  db,
+                  CHATS_COLLECTION,
+                  chatIdToDelete,
+                  MESSAGES_SUBCOLLECTION
+                );
+                let messagesQuery = query(messagesRef, limit(500));
+                let messagesSnapshot;
+                let deletedCount = 0;
+                let lastVisible = null; // Track last document for pagination
+
+                do {
+                  // Adjust query if not the first batch
+                  const currentQuery = lastVisible
+                    ? query(messagesRef, limit(500), startAfter(lastVisible))
+                    : messagesQuery;
+                  messagesSnapshot = await getDocs(currentQuery);
+
+                  if (!messagesSnapshot.empty) {
+                    const batch = writeBatch(db);
+                    messagesSnapshot.docs.forEach((doc) => {
+                      batch.delete(doc.ref);
+                    });
+                    await batch.commit();
+                    deletedCount += messagesSnapshot.size;
+                    console.log(`Deleted ${deletedCount} messages batch...`);
+                    // Get the last document for the next query's startAfter
+                    lastVisible =
+                      messagesSnapshot.docs[messagesSnapshot.docs.length - 1];
+                  }
+                } while (messagesSnapshot.size === 500); // Continue if batch was full
+
+                console.log(`Finished deleting ${deletedCount} messages.`);
+
+                // Delete main chat document
+                const chatDocRef = doc(db, CHATS_COLLECTION, chatIdToDelete);
+                await deleteDoc(chatDocRef);
+                console.log("Chat document deleted:", chatIdToDelete);
+              } catch (err) {
+                console.error(
+                  "ChatListScreen: Error deleting chat or messages:",
+                  err
+                );
+                let deleteErrorMsg = t("chat_delete_error");
+                if (err.code === "permission-denied") {
+                  deleteErrorMsg += " " + t("error_permission_denied");
+                }
+                Alert.alert(t("error"), deleteErrorMsg);
+              } finally {
+                if (isMounted.current) setIsDeleting(null);
+              }
+            },
+          },
+        ]
+      );
+    },
+    [isDeleting]
+  ); // isDeleting dependency prevents re-triggering while delete in progress
+
+  // --- Render List Item ---
+  const renderChatItem = ({ item }) => {
+    const isBeingDeleted = isDeleting === item.id;
+
     return (
-      <View style={styles.container}>
-        <View style={styles.centeredMessageContainer}>
-          <Text style={styles.errorText}>Please log in to view chats.</Text>
+      <TouchableOpacity
+        style={[
+          styles.chatListItem,
+          { backgroundColor: theme.card },
+          isBeingDeleted && styles.deletingItem,
+        ]}
+        onPress={() => handleSelectChat(item)}
+        onLongPress={() => handleDeleteChat(item.id, item.title)}
+        disabled={isBeingDeleted}
+        activeOpacity={0.7}
+      >
+        <View style={styles.chatItemContent}>
+          <Text
+            style={[styles.chatItemTitle, { color: theme.text }]}
+            numberOfLines={1}
+          >
+            {item.title || t("chat_new_chat")}
+          </Text>
+          {/* ************** FIX IS HERE ************** */}
+          <Text
+            style={[styles.chatItemTimestamp, { color: theme.textSecondary }]}
+          >
+            {item.updatedAt ? formatTimestamp(item.updatedAt) : "..."}
+            {/* ***************************************** */}
+          </Text>
         </View>
-      </View>
+        {isBeingDeleted ? (
+          <ActivityIndicator
+            color={theme.primary}
+            size="small"
+            style={styles.deleteIcon}
+          />
+        ) : (
+          <TouchableOpacity
+            onPress={() => handleDeleteChat(item.id, item.title)}
+            style={styles.deleteIcon}
+            hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+            disabled={isBeingDeleted}
+          >
+            <Trash2 size={20} color={theme.deleteIcon} />
+          </TouchableOpacity>
+        )}
+      </TouchableOpacity>
     );
-  }
+  };
+
+  // --- Main Render Logic ---
+  const renderBody = () => {
+    if (isLoadingChats) {
+      return (
+        <View style={styles.centeredMessageContainer}>
+          <ActivityIndicator size="large" color={theme.primary} />
+        </View>
+      );
+    }
+    if (error) {
+      return (
+        <View style={styles.centeredMessageContainer}>
+          <AlertCircle size={40} color={theme.placeholderIcon} />
+          <Text style={[styles.errorText, { color: theme.error }]}>
+            {error}
+          </Text>
+          <TouchableOpacity
+            onPress={() => {
+              if (!isLoadingChats) {
+                setIsLoadingChats(true);
+                getUserChatsQuery(); /* Trigger refetch manually if needed, though focus usually handles it */
+              }
+            }}
+            style={[
+              styles.retryButton,
+              { backgroundColor: theme.retryButtonBackground },
+            ]}
+          >
+            <Text style={[styles.retryButtonText, { color: theme.text }]}>
+              {t("retry")}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+    if (chats.length === 0) {
+      return (
+        <View style={styles.centeredMessageContainer}>
+          <MessageSquarePlus size={50} color={theme.placeholderIcon} />
+          <Text style={[styles.emptyListText, { color: theme.textSecondary }]}>
+            {t("chat_list_no_chats")}
+          </Text>
+        </View>
+      );
+    }
+    return (
+      <FlatList
+        data={chats}
+        renderItem={renderChatItem}
+        keyExtractor={(item) => item.id}
+        style={styles.chatList}
+        contentContainerStyle={{ paddingBottom: 30, paddingTop: 10 }}
+      />
+    );
+  };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.listHeader}>
-        <Text style={styles.headerTitle}>AI Chat History</Text>
+    <SafeAreaView
+      style={[styles.safeArea, { backgroundColor: theme.background }]}
+    >
+      {/* Custom Header */}
+      <View
+        style={[
+          styles.listHeader,
+          {
+            backgroundColor: theme.headerBackground,
+            borderBottomColor: theme.border,
+          },
+        ]}
+      >
+        <Text style={[styles.headerTitle, { color: theme.text }]}>
+          {t("chat_list_title")}
+        </Text>
         <TouchableOpacity onPress={handleNewChat} style={styles.newChatButton}>
-          <MessageSquarePlus size={24} color="#BFFF00" />
+          <MessageSquarePlus size={26} color={theme.primary} />
         </TouchableOpacity>
       </View>
 
-      {isLoadingChats ? (
-        <View style={styles.centeredMessageContainer}>
-          <ActivityIndicator size="large" color="#BFFF00" />
-        </View>
-      ) : error ? (
-        <View style={styles.centeredMessageContainer}>
-          <Text style={[styles.errorText, styles.listError]}>{error}</Text>
-        </View>
-      ) : chats.length === 0 ? (
-        <View style={styles.centeredMessageContainer}>
-          <Text style={styles.emptyListText}>
-            No chats yet. Start a new conversation!
-          </Text>
-        </View>
-      ) : (
-        <FlatList
-          data={chats}
-          renderItem={renderChatItem}
-          keyExtractor={(item) => item.id}
-          style={styles.chatList}
-          contentContainerStyle={{ paddingBottom: 20 }}
-        />
-      )}
-    </View>
+      {renderBody()}
+    </SafeAreaView>
   );
 };
 
-// Styles (Copied and adjusted from LLM.js list view styles)
+// --- Styles --- (Keep previous refined styles, ensure colors use theme object)
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#000000" },
+  safeArea: {
+    flex: 1,
+  },
+  container: {
+    flex: 1,
+  },
   centeredMessageContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    paddingHorizontal: 20,
+    paddingHorizontal: 30,
   },
   listHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 15,
-    paddingTop: 15,
-    paddingBottom: 10,
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === "android" ? 15 : 10,
+    paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "#222222",
   },
-  headerTitle: { color: "#FFFFFF", fontSize: 20, fontWeight: "bold" },
-  newChatButton: { padding: 5 },
-  chatList: { flex: 1, paddingHorizontal: 10, marginTop: 10 },
-  chatListItem: {
-    backgroundColor: "#1A1A1A",
-    paddingVertical: 12,
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: "bold",
+  },
+  newChatButton: {
+    padding: 8,
+    marginRight: -5,
+  },
+  chatList: {
+    flex: 1,
     paddingHorizontal: 15,
-    borderRadius: 8,
-    marginBottom: 10,
+  },
+  chatListItem: {
+    paddingVertical: 15,
+    paddingHorizontal: 18,
+    borderRadius: 12,
+    marginBottom: 12,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
-  chatItemContent: { flex: 1, marginRight: 10 },
-  chatItemTitle: { color: "#E0E0E0", fontSize: 16, fontWeight: "500" },
-  chatItemTimestamp: { color: "#888888", fontSize: 12, marginTop: 4 },
-  deleteIcon: { padding: 5 },
+  deletingItem: {
+    opacity: 0.5,
+  },
+  chatItemContent: {
+    flex: 1,
+    marginRight: 15,
+  },
+  chatItemTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    marginBottom: 3,
+  },
+  chatItemTimestamp: {
+    fontSize: 13,
+  },
+  deleteIcon: {
+    padding: 5,
+    minWidth: 25,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   emptyListText: {
-    color: "#AAAAAA",
     textAlign: "center",
     marginTop: 20,
     fontSize: 16,
+    lineHeight: 22,
   },
-  errorText: { color: "#FF6B6B", textAlign: "center", fontSize: 14 },
-  listError: {
-    /* Styles specific to error on list screen if needed */
+  errorText: {
+    textAlign: "center",
+    fontSize: 16,
+    lineHeight: 22,
+  },
+  retryButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 25,
+    borderRadius: 20,
+    marginTop: 20,
+  },
+  retryButtonText: {
+    fontWeight: "600",
+    fontSize: 15,
   },
 });
 
