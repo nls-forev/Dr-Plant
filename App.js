@@ -8,29 +8,9 @@ import AppNavigator from "./src/navigation/AppNavigator";
 // import { ThemeProvider } from "./src/theme/theme";
 import { AuthProvider } from "./src/context/AuthContext"; // Ensure correct path
 
-<<<<<<< HEAD
-// Your Firebase config (keep as is)
-const firebaseConfig = {
-  apiKey: "AIzaSyDAIoMHmhDw-BJ75cZsrPJTgALL5jdDL2s",
-  authDomain: "plantdisease-df992.firebaseapp.com",
-  projectId: "plantdisease-df992",
-  storageBucket: "third-eye-2293d.appspot.com",
-  messagingSenderId: "321173693128",
-  appId: "1:321173693128:android:c3bbe98027a18188affbfd",
-};
-
-// Initialize Firebase (keep as is)
-if (!firebase.apps.length) {
-  firebase.initializeApp(firebaseConfig);
-  console.log("Firebase initialized successfully");
-} else {
-  console.log("Firebase already initialized");
-}
-=======
 // --- Import the firebase init file early to ensure Firebase is configured ---
 // --- It doesn't export anything used here directly, but its execution is required ---
 import "./src/firebase/firebaseInit";
->>>>>>> 253a8ac (made code efficient and improved error handling; will add inject saved scan results in chat now;)
 
 // --- Main App Component ---
 const App = () => {
