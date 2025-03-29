@@ -1,4 +1,4 @@
-// src/screens/SelectScanScreen.js
+// src/components/SelectScanDialog.js
 import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
@@ -8,11 +8,13 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   SafeAreaView,
-  Image, // To display scan thumbnail
+  Image,
+  Modal, // Import Modal
+  TouchableWithoutFeedback, // To prevent closing when tapping inside dialog
   Platform,
 } from "react-native";
-import { useAuth } from "../context/AuthContext";
-import { db } from "../firebase/firebaseInit"; // Ensure correct path
+import { useAuth } from "../context/AuthContext"; // Adjust path if needed
+import { db } from "../firebase/firebaseInit"; // Adjust path if needed
 import {
   collection,
   query,
@@ -20,70 +22,50 @@ import {
   orderBy,
   getDocs,
   Timestamp,
-} from "firebase/firestore"; // Import Timestamp
-import { useNavigation } from "@react-navigation/native";
-import { t } from "../localization/strings"; // Ensure correct path
+} from "firebase/firestore";
+import { t } from "../localization/strings"; // Adjust path if needed
 import { formatDistanceToNowStrict } from "date-fns";
 import { X, AlertCircle, Image as ImageIcon } from "lucide-react-native";
 
-// --- Helper: Time Formatting ---
+// --- Helper: Time Formatting --- (Copied from SelectScanScreen)
 const formatTimestamp = (timestamp) => {
-  // Check if it's a Firestore Timestamp object
   if (timestamp && typeof timestamp.toDate === "function") {
     try {
-      const date = timestamp.toDate();
-      // Using date-fns for better relative time strings
-      // Consider adding locale support later
-      return formatDistanceToNowStrict(date, { addSuffix: true });
+      return formatDistanceToNowStrict(timestamp.toDate(), { addSuffix: true });
     } catch (error) {
-      console.error("Error formatting Firestore timestamp:", error);
       return t("Recently") || "Recently";
     }
-  }
-  // Handle if it's already a JS Date object (less likely from Firestore v9+)
-  else if (timestamp instanceof Date) {
+  } else if (timestamp instanceof Date) {
     try {
       return formatDistanceToNowStrict(timestamp, { addSuffix: true });
     } catch (error) {
-      console.error("Error formatting Date object:", error);
       return t("Recently") || "Recently";
     }
-  }
-  // Fallback for null, undefined, or other types
-  else {
-    console.warn("Invalid timestamp type received:", typeof timestamp);
+  } else {
     return t("Recently") || "Recently";
   }
 };
 
-const SelectScanScreen = () => {
-  const navigation = useNavigation();
+const SelectScanDialog = ({ isVisible, onClose, onScanSelect, theme }) => {
   const { user } = useAuth();
   const [scans, setScans] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false); // Start false, load on visible
   const [error, setError] = useState(null);
 
-  // Theme
-  const theme = {
-    background: "#0A0A0A",
-    headerBackground: "#101010",
-    text: "#EFEFEF",
-    textSecondary: "#AEAEB2",
-    primary: "#BFFF00",
-    card: "#1C1C1E",
-    border: "#2C2C2E",
-    error: "#FF9A9A",
-    placeholderIcon: "#888",
-    retryButtonBackground: "#333",
-  };
-
-  // Fetch Scans
+  // Fetch Scans - Modified to fetch only when visible and needed
   const fetchScans = useCallback(async () => {
     if (!user?.uid) {
       setError(t("login_required"));
       setIsLoading(false);
       return;
     }
+    // Only fetch if dialog is becoming visible and scans are not loaded yet
+    if (scans.length > 0) {
+      setIsLoading(false); // Already have data
+      return;
+    }
+
+    console.log("Fetching scans for dialog...");
     setIsLoading(true);
     setError(null);
     try {
@@ -91,66 +73,52 @@ const SelectScanScreen = () => {
         collection(db, "recent_activity"),
         where("userId", "==", user.uid),
         orderBy("timestamp", "desc")
-        // limit(50) // Optional limit
       );
       const snapshot = await getDocs(scansQuery);
       const fetchedScans = snapshot.docs.map((doc) => {
         const data = doc.data();
-        // Ensure timestamp is correctly handled (it should be Firestore Timestamp)
         return {
           id: doc.id,
           ...data,
-          // Keep timestamp as Firestore Timestamp object for reliable comparison/formatting
           timestamp:
             data.timestamp instanceof Timestamp ? data.timestamp : null,
-          // Convert other necessary fields if needed, ensure serializability if passing complex objects
         };
       });
       setScans(fetchedScans);
     } catch (err) {
-      console.error("Error fetching scans for selection:", err);
+      console.error("Error fetching scans for dialog:", err);
       let userFriendlyError = t("error_loading_data");
-      if (err.code === "permission-denied") {
-        userFriendlyError = t("error_permission_denied");
-      } else if (err.code === "unauthenticated") {
-        userFriendlyError = t("login_required");
-      } else if (err.code === "failed-precondition") {
-        userFriendlyError = t("error_loading_data") + " (DB Index missing?)";
-        console.warn(
-          "Firestore Index likely missing for query: recent_activity / (userId ==, timestamp DESC)"
-        );
-      }
+      // Add more specific error handling if needed (like in SelectScanScreen)
       setError(userFriendlyError);
     } finally {
       setIsLoading(false);
     }
-  }, [user?.uid]);
+  }, [user?.uid, scans.length]); // Depend on scans.length to refetch if empty
 
+  // Effect to trigger fetch when dialog becomes visible
   useEffect(() => {
-    fetchScans();
-  }, [fetchScans]);
+    if (isVisible) {
+      fetchScans();
+    } else {
+      // Optional: Clear state when dialog closes to force refresh next time?
+      // setScans([]);
+      // setError(null);
+    }
+  }, [isVisible, fetchScans]);
 
   // Handle Selecting a Scan
   const handleSelectScan = (scanData) => {
-    // Prepare data to pass back - ensure it's serializable if complex
+    // Prepare data to pass back (same as before)
     const dataToPass = {
       scanId: scanData.id,
       bestLabel: scanData.bestLabel,
       bestConfidence: scanData.bestConfidence,
-      imageUri: scanData.imageUri, // Pass URI, can be fetched again if needed
+      imageUri: scanData.imageUri,
       description: scanData.description,
-      top5: scanData.top5, // Pass top5 array
-      // Don't pass the raw Firestore timestamp object directly if it causes issues
-      // Pass as ISO string or milliseconds if needed, but formatTimestamp handles the object
-      // timestamp: scanData.timestamp?.toMillis(), // Example: Pass milliseconds
+      top5: scanData.top5,
     };
-
-    // Navigate back to ChatScreen and pass the selected data
-    navigation.navigate({
-      name: "ChatScreen",
-      params: { selectedScanData: dataToPass }, // Pass the prepared object
-      merge: true, // Merge params with existing ones on ChatScreen
-    });
+    onScanSelect(dataToPass); // Pass data to the callback
+    onClose(); // Close the dialog
   };
 
   // Render Item
@@ -160,7 +128,6 @@ const SelectScanScreen = () => {
       onPress={() => handleSelectScan(item)}
       activeOpacity={0.7}
     >
-      {/* Thumbnail */}
       <View
         style={[
           styles.thumbnailContainer,
@@ -177,7 +144,6 @@ const SelectScanScreen = () => {
           <ImageIcon size={24} color={theme.placeholderIcon} />
         )}
       </View>
-      {/* Details */}
       <View style={styles.detailsContainer}>
         <Text
           style={[styles.itemLabel, { color: theme.text }]}
@@ -211,10 +177,10 @@ const SelectScanScreen = () => {
             {error}
           </Text>
           <TouchableOpacity
-            onPress={fetchScans}
+            onPress={fetchScans} // Allow retry
             style={[
               styles.retryButton,
-              { backgroundColor: theme.retryButtonBackground },
+              { backgroundColor: theme.retryButtonBackground || "#333" },
             ]}
           >
             <Text style={[styles.retryButtonText, { color: theme.text }]}>
@@ -240,42 +206,75 @@ const SelectScanScreen = () => {
         renderItem={renderScanItem}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContentContainer}
+        style={styles.listStyle} // Added style for max height
       />
     );
   };
 
   return (
-    <SafeAreaView
-      style={[styles.safeArea, { backgroundColor: theme.headerBackground }]}
+    <Modal
+      animationType="fade" // Or 'slide'
+      transparent={true}
+      visible={isVisible}
+      onRequestClose={onClose} // Important for Android back button
     >
-      {/* Custom Header */}
-      <View style={[styles.header, { borderBottomColor: theme.border }]}>
-        <View style={{ width: 40 }} /> {/* Spacer to balance close button */}
-        <Text style={[styles.headerTitle, { color: theme.text }]}>
-          {t("chat_attach_scan")}
-        </Text>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={styles.closeButton}
-        >
-          <X size={26} color={theme.textSecondary} />
-        </TouchableOpacity>
-      </View>
-      {/* Body */}
-      <View
-        style={[styles.bodyContainer, { backgroundColor: theme.background }]}
+      {/* Background Dimmer */}
+      <TouchableOpacity
+        style={styles.modalOverlay}
+        activeOpacity={1}
+        onPressOut={onClose} // Close when tapping outside
       >
-        {renderBody()}
-      </View>
-    </SafeAreaView>
+        {/* Dialog Content Wrapper - Prevents taps inside from closing */}
+        <TouchableWithoutFeedback>
+          <View
+            style={[
+              styles.dialogContainer,
+              { backgroundColor: theme.headerBackground || "#101010" },
+            ]}
+          >
+            {/* Header */}
+            <View
+              style={[styles.dialogHeader, { borderBottomColor: theme.border }]}
+            >
+              <Text style={[styles.dialogTitle, { color: theme.text }]}>
+                {t("chat_attach_scan")}
+              </Text>
+              <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+                <X size={24} color={theme.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Body */}
+            <View style={styles.dialogBody}>{renderBody()}</View>
+          </View>
+        </TouchableWithoutFeedback>
+      </TouchableOpacity>
+    </Modal>
   );
 };
 
-// --- Styles ---
+// --- Styles --- (Adapted from SelectScanScreen and Modal needs)
 const styles = StyleSheet.create({
-  safeArea: { flex: 1 },
-  bodyContainer: { flex: 1 },
-  header: {
+  modalOverlay: {
+    flex: 1,
+    justifyContent: "center", // Center vertically
+    alignItems: "center", // Center horizontally
+    backgroundColor: "rgba(0, 0, 0, 0.6)", // Dim background
+    paddingHorizontal: 20, // Add some horizontal padding
+  },
+  dialogContainer: {
+    width: "100%", // Take full width within padding
+    maxWidth: 500, // Max width for larger screens
+    maxHeight: "80%", // Limit height
+    borderRadius: 15,
+    overflow: "hidden", // Clip content to rounded borders
+    elevation: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+  },
+  dialogHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
@@ -283,9 +282,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     borderBottomWidth: 1,
   },
-  headerTitle: { fontSize: 18, fontWeight: "600" },
-  closeButton: { padding: 5, width: 40, alignItems: "flex-end" },
-  listContentContainer: { padding: 15 },
+  dialogTitle: {
+    fontSize: 17,
+    fontWeight: "600",
+    flex: 1, // Allow title to take space
+    textAlign: "center", // Center title
+    marginLeft: 30, // Offset for close button space
+  },
+  closeButton: {
+    padding: 5,
+    width: 30, // Smaller touch target okay here
+    alignItems: "flex-end",
+  },
+  dialogBody: {
+    // Let FlatList handle scrolling/height within the maxHeight of dialogContainer
+  },
+  listStyle: {
+    // Styles for the FlatList itself if needed (e.g., padding)
+  },
+  listContentContainer: {
+    padding: 15,
+    paddingBottom: 20, // Extra padding at bottom
+  },
   itemContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -294,8 +312,8 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   thumbnailContainer: {
-    width: 55,
-    height: 55,
+    width: 50,
+    height: 50,
     borderRadius: 8,
     overflow: "hidden",
     alignItems: "center",
@@ -304,28 +322,29 @@ const styles = StyleSheet.create({
   },
   thumbnail: { width: "100%", height: "100%" },
   detailsContainer: { flex: 1 },
-  itemLabel: { fontSize: 16, fontWeight: "500", marginBottom: 4 },
-  itemTimestamp: { fontSize: 13 },
+  itemLabel: { fontSize: 15, fontWeight: "500", marginBottom: 3 },
+  itemTimestamp: { fontSize: 12 },
   centerFlex: {
-    flex: 1,
+    // For Loading/Error/Empty states inside the dialog body
+    paddingVertical: 40,
+    paddingHorizontal: 20,
     justifyContent: "center",
     alignItems: "center",
-    padding: 20,
   },
   errorText: {
     marginTop: 15,
-    fontSize: 16,
+    fontSize: 15,
     textAlign: "center",
-    lineHeight: 22,
+    lineHeight: 21,
   },
-  emptyText: { marginTop: 15, fontSize: 16, textAlign: "center" },
+  emptyText: { marginTop: 15, fontSize: 15, textAlign: "center" },
   retryButton: {
     paddingVertical: 10,
     paddingHorizontal: 25,
     borderRadius: 20,
     marginTop: 20,
   },
-  retryButtonText: { fontWeight: "600", fontSize: 15 },
+  retryButtonText: { fontWeight: "600", fontSize: 14 },
 });
 
-export default SelectScanScreen;
+export default SelectScanDialog;

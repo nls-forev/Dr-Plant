@@ -21,7 +21,6 @@ import SettingsScreen from "../screens/SettingsScreen"; // Keep import if reacha
 import AnalyticsScreen from "../screens/AnalyticsScreen"; // Import new Analytics screen
 import CustomTabBar from "../components/CustomTabBar";
 import ScanResultsScreen from "../screens/ScanResultsScreen";
-import SelectScanScreen from "../screens/selectScanScreen";
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -108,10 +107,6 @@ const AppNavigator = () => {
                 cardStyleInterpolator: CardStyleInterpolators.forVerticalIOS,
               }}
             >
-              <Stack.Screen
-                name="SelectScanScreen"
-                component={SelectScanScreen}
-              />
               {/* Add EditProfileScreen etc. here when created */}
             </Stack.Group>
           </Stack.Group>
