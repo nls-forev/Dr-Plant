@@ -11,7 +11,6 @@ import LoginScreen from '../screens/LoginScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import ImageCaptureScreen from '../screens/ImageCaptureScreen';
 import HomeScreen from '../screens/HomeScreen';
-// import TimeLineScreen from "../screens/LLM"; // REMOVE OLD LLM IMPORT
 import ChatListScreen from '../screens/ChatListScreen'; // <-- IMPORT NEW LIST SCREEN
 import ChatScreen from '../screens/ChatScreen';       // <-- IMPORT NEW CHAT SCREEN
 import SettingsScreen from '../screens/SettingsScreen';
@@ -59,7 +58,6 @@ const AppNavigator = () => {
         <Stack.Screen name="Main" component={MainTabNavigator} options={{ headerShown: false }}/>
 
         {/* Screens that can be pushed ON TOP of the tabs */}
-        <Stack.Screen name="RecentActivityDetail" component={RecentActivityDetail} options={{ headerShown: false }}/>
         <Stack.Screen name="ImageCaptureScreen" component={ImageCaptureScreen}
              // Example: Give Image Capture a header
              options={{ title: 'Scan Plant', headerStyle: {backgroundColor: '#000'}, headerTintColor: '#FFF' }}/>

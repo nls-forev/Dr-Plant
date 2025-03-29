@@ -19,6 +19,7 @@
     "@tensorflow/tfjs-backend-cpu": "^4.20.0",
     "@tensorflow/tfjs-react-native": "^1.0.0",
     "axios": "^1.8.4",
+    "date-fns": "^4.1.0",
     "expo": "~52.0.40",
     "expo-auth-session": "^6.0.3",
     "expo-camera": "~16.0.18",
